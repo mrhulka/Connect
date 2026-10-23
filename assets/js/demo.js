@@ -1,13 +1,17 @@
 /* Robobox Connect — sample data, for checking the build without the API.
  *
- * Off unless the address ends in ?demo, so the live site is untouched. It
- * swaps the storage adapter for one that reads the fixture below and throws
- * every write away, so nothing here can reach the real server. The schools
- * are invented; the products, prices and targets are the real ones, because
- * those are the thing being checked. */
+ * On when the file is opened straight off a disk, because a page served
+ * from file:// cannot call the API at all - there is nothing else it could
+ * usefully do. On a real server it stays off unless the address ends in
+ * ?demo, so a deployed site is untouched.
+ *
+ * It swaps the storage adapter for one that reads the fixture below and
+ * throws every write away, so nothing here can reach the real server. The
+ * schools are invented; the products, prices and targets are the real ones,
+ * because those are the thing being checked. */
 (function () {
   'use strict';
-  if (!/[?&]demo\b/.test(location.search)) return;
+  if (location.protocol !== 'file:' && !/[?&]demo\b/.test(location.search)) return;
 
   var USERS = [
     { id: 'parth',  name: 'Parth',   role: 'ceo',        ownerKey: 'PARTH',   pin: 'parth' },
