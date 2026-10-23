@@ -1,0 +1,346 @@
+/* Robobox Sales OS - SVG chart primitives.
+ *
+ * Hand-rolled so the whole app stays dependency-free and drops into the
+ * client's existing site as static files. Follows one house style: thin marks,
+ * hairline recessive grid, 4px rounded data-ends at the value end only, a 2px
+ * surface gap between adjacent fills, a legend whenever there are two or more
+ * series, and a hover tooltip on every plotted mark.
+ */
+window.RB = window.RB || {};
+
+RB.charts = (function () {
+  'use strict';
+
+  var U = RB.util;
+
+  /* No categorical palette. Every chart here plots one measure, so a mark is
+   * Charcoal, magnitude uses the single-hue grey->charcoal ramp, and Yellow is
+   * a highlight that always sits beside a direct value label (it is 1.6:1 on
+   * Paper and can never carry meaning on its own). Red means lost or overdue. */
+  var INK = 'var(--ramp-5)';   // softer than full charcoal; direct labels carry the values
+  var ORDINAL = ['var(--ramp-1)', 'var(--ramp-2)', 'var(--ramp-3)',
+                 'var(--ramp-4)', 'var(--ramp-5)', 'var(--ramp-6)'];
+  var SEQ = ORDINAL;
+  var STATUS = { good: 'var(--ok)', warning: 'var(--warn)', critical: 'var(--bad)',
+                 brand: 'var(--brand)', ink: INK };
+
+  function seriesColor() { return INK; }
+
+  function ordinalColor(i, n) {
+    if (n <= 1) return ORDINAL[0];
+    var idx = Math.round(i / (n - 1) * (ORDINAL.length - 1));
+    return ORDINAL[idx];
+  }
+
+  function seqColor(t) { // t in 0..1
+    var idx = Math.max(0, Math.min(SEQ.length - 1, Math.round(t * (SEQ.length - 1))));
+    return SEQ[idx];
+  }
+
+  function esc(s) { return U.esc(s); }
+
+  function tip(title, rows) {
+    var html = '<div class="tt-title">' + esc(title) + '</div>' +
+      (rows || []).map(function (r) {
+        return '<div class="tt-row"><span>' + esc(r[0]) + '</span><span>' + esc(r[1]) + '</span></div>';
+      }).join('');
+    return esc(html);
+  }
+
+  /* Rounded only on the value end (`side`), square where it meets the baseline. */
+  function bar(x, y, w, h, r, side) {
+    r = Math.max(0, Math.min(r, side === 'top' ? w / 2 : h / 2, side === 'top' ? h : w));
+    if (r <= 0.5) return 'M' + x + ',' + y + 'h' + w + 'v' + h + 'h' + (-w) + 'Z';
+    if (side === 'top') {
+      return 'M' + x + ',' + (y + h) + 'V' + (y + r) + 'a' + r + ',' + r + ' 0 0 1 ' + r + ',' + (-r) +
+             'h' + (w - 2 * r) + 'a' + r + ',' + r + ' 0 0 1 ' + r + ',' + r + 'V' + (y + h) + 'Z';
+    }
+    // right end rounded
+    return 'M' + x + ',' + y + 'h' + (w - r) + 'a' + r + ',' + r + ' 0 0 1 ' + r + ',' + r +
+           'v' + (h - 2 * r) + 'a' + r + ',' + r + ' 0 0 1 ' + (-r) + ',' + r + 'H' + x + 'Z';
+  }
+
+  function niceMax(v) {
+    if (!v || v <= 0) return 1;
+    var mag = Math.pow(10, Math.floor(Math.log10(v)));
+    var n = v / mag;
+    var step = n <= 1 ? 1 : n <= 2 ? 2 : n <= 2.5 ? 2.5 : n <= 5 ? 5 : 10;
+    return step * mag;
+  }
+
+  function legend(items) {
+    if (!items || items.length < 2) return '';
+    return '<div class="legend">' + items.map(function (it) {
+      return '<span class="legend-item"><span class="legend-swatch" style="background:' + it.color + '"></span>' +
+        esc(it.label) + '</span>';
+    }).join('') + '</div>';
+  }
+
+  /* ------------------------------------------------------- horizontal bar */
+  /* One measure across named categories. Single hue by default (identity is
+   * carried by the row label, not by colour). */
+  function hbar(opts) {
+    var data = opts.data || [];
+    if (!data.length) return '<p class="empty">No data.</p>';
+    // Ranked by default; pass sort:false where the row order carries meaning
+    // (ordered bands, funnel steps) and must not be re-ranked.
+    if (opts.sort !== false) data = U.sortBy(data, function (d) { return d.value || 0; }, 'desc');
+    var fmt = opts.format || U.count;
+    var rowH = opts.rowH || 26;
+    var gap = 6;
+    var labelW = opts.labelW || 148;
+    var valueW = opts.valueW || 76;
+    var W = 720;
+    var H = data.length * rowH + 8;
+    var plotW = W - labelW - valueW - 12;
+    var peak = Math.max.apply(null, data.map(function (d) { return d.value || 0; }));
+    if (!peak) return '<p class="empty">' + esc(opts.empty || 'Nothing recorded yet.') + '</p>';
+    var max = niceMax(peak);
+    var colorFn = opts.color || function () { return INK; };
+
+    var marks = data.map(function (d, i) {
+      var y = i * rowH + 4;
+      var h = rowH - gap;
+      var w = Math.max(max ? (d.value / max) * plotW : 0, d.value > 0 ? 3 : 0);
+      var c = colorFn(d, i);
+      var t = tip(d.key, (opts.tipRows ? opts.tipRows(d) : [[opts.measureLabel || 'Value', fmt(d.value)]]));
+      return '<g class="mark" data-tip="' + t + '"' + (opts.onClick ? ' data-key="' + esc(d.key) + '" style="cursor:pointer"' : '') + '>' +
+        '<text class="axis-label" x="' + (labelW - 8) + '" y="' + (y + h / 2 + 4) + '" text-anchor="end">' +
+          esc(truncate(d.label || d.key, 24)) + '</text>' +
+        '<path d="' + bar(labelW, y, w, h, 4, 'right') + '" fill="' + c + '"></path>' +
+        '<text class="value-label" x="' + (labelW + plotW + 10) + '" y="' + (y + h / 2 + 4) + '">' + esc(fmt(d.value)) + '</text>' +
+        '<rect class="hit" x="0" y="' + y + '" width="' + W + '" height="' + rowH + '"></rect>' +
+      '</g>';
+    }).join('');
+
+    return '<svg class="viz" viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="xMinYMin meet" role="img" ' +
+      'aria-label="' + esc(opts.title || 'Bar chart') + '">' + marks + '</svg>';
+  }
+
+  /* ---------------------------------------------------------------- funnel */
+  /* Ordered stages -> the ordinal ramp, plus the step-to-step conversion. */
+  function funnel(opts) {
+    var data = opts.data || [];
+    if (!data.length) return '<p class="empty">No data.</p>';
+    var rowH = 42, labelW = 150, W = 720, H = data.length * rowH + 10;
+    var plotW = W - labelW - 130;
+    var max = Math.max.apply(null, data.map(function (d) { return d.n; })) || 1;
+    var fmt = opts.format || U.count;
+
+    var marks = data.map(function (d, i) {
+      var y = i * rowH + 5, h = rowH - 12;
+      var w = Math.max((d.n / max) * plotW, d.n ? 3 : 0);
+      var prev = i > 0 ? data[i - 1].n : null;
+      var conv = prev ? U.pct(d.n, prev) : null;
+      var t = tip(d.key, [
+        ['Opportunities', U.count(d.n)],
+        ['Pipeline value', U.money(d.value)],
+        prev ? ['Conversion from ' + data[i - 1].key, conv] : ['Share of pipeline', U.pct(d.n, max)]
+      ]);
+      return '<g class="mark" data-tip="' + t + '"' + (opts.onClick ? ' data-key="' + esc(d.key) + '" style="cursor:pointer"' : '') + '>' +
+        '<text class="axis-label" x="' + (labelW - 10) + '" y="' + (y + h / 2 + 4) + '" text-anchor="end">' + esc(d.key) + '</text>' +
+        '<path d="' + bar(labelW, y, w, h, 4, 'right') + '" fill="' +
+          (opts.highlightLast && i === data.length - 1 ? 'var(--brand)' : ordinalColor(i, data.length)) + '"></path>' +
+        '<text class="value-label strong" x="' + (labelW + w + 10) + '" y="' + (y + h / 2 + 4) + '">' + esc(U.count(d.n)) + '</text>' +
+        '<text class="value-label" x="' + (W - 8) + '" y="' + (y + h / 2 + 4) + '" text-anchor="end">' + esc(fmt(d.value)) + '</text>' +
+        (conv ? '<text class="value-label" x="' + (labelW + w + 10) + '" y="' + (y + h + 9) + '" fill="var(--ink-muted)">' + esc(conv) + ' through</text>' : '') +
+        '<rect class="hit" x="0" y="' + y + '" width="' + W + '" height="' + rowH + '"></rect>' +
+      '</g>';
+    }).join('');
+
+    return '<svg class="viz" viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="xMinYMin meet" role="img" aria-label="' +
+      esc(opts.title || 'Funnel') + '">' + marks + '</svg>';
+  }
+
+  /* ------------------------------------------------------------ line / area */
+  function line(opts) {
+    var series = opts.series || [];               // [{label,color,points:[{x,y}]}]
+    var labels = opts.labels || [];
+    if (!series.length || !labels.length) return '<p class="empty">No data.</p>';
+    var W = 720, H = opts.height || 240;
+    var padL = 46, padR = 14, padT = 12, padB = 30;
+    var plotW = W - padL - padR, plotH = H - padT - padB;
+    var maxRaw = 0;
+    series.forEach(function (s) { s.points.forEach(function (p) { if (p.y > maxRaw) maxRaw = p.y; }); });
+    var max = niceMax(maxRaw) || 1;
+    var n = labels.length;
+    var xAt = function (i) { return padL + (n === 1 ? plotW / 2 : (i / (n - 1)) * plotW); };
+    var yAt = function (v) { return padT + plotH - (v / max) * plotH; };
+    var fmt = opts.format || U.count;
+
+    var grid = '', ticks = 4;
+    for (var g = 0; g <= ticks; g++) {
+      var v = (max / ticks) * g, y = yAt(v);
+      grid += '<line class="gridline" x1="' + padL + '" y1="' + y + '" x2="' + (W - padR) + '" y2="' + y + '"></line>' +
+              '<text class="axis-label" x="' + (padL - 8) + '" y="' + (y + 4) + '" text-anchor="end">' + esc(fmt(v)) + '</text>';
+    }
+
+    var paths = series.map(function (s, si) {
+      var color = s.color || seriesColor(si);
+      var d = s.points.map(function (p, i) { return (i ? 'L' : 'M') + xAt(i) + ',' + yAt(p.y); }).join('');
+      var area = opts.area && series.length === 1
+        ? '<path d="' + d + 'L' + xAt(n - 1) + ',' + yAt(0) + 'L' + xAt(0) + ',' + yAt(0) + 'Z" fill="' + color + '" opacity=".10"></path>' : '';
+      var dots = s.points.map(function (p, i) {
+        return '<circle class="mark" cx="' + xAt(i) + '" cy="' + yAt(p.y) + '" r="4" fill="' + color +
+          '" stroke="var(--surface)" stroke-width="2" data-tip="' +
+          tip(labels[i], [[s.label, fmt(p.y)]]) + '"></circle>';
+      }).join('');
+      var end = '<text class="value-label strong" x="' + (xAt(n - 1) + 8) + '" y="' + (yAt(s.points[n - 1].y) + 4) + '">' +
+        esc(fmt(s.points[n - 1].y)) + '</text>';
+      return area + '<path d="' + d + '" fill="none" stroke="' + color + '" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"></path>' + dots + (series.length === 1 ? end : '');
+    }).join('');
+
+    var xlabels = labels.map(function (l, i) {
+      if (n > 9 && i % 2) return '';
+      return '<text class="axis-label" x="' + xAt(i) + '" y="' + (H - 8) + '" text-anchor="middle">' + esc(l) + '</text>';
+    }).join('');
+
+    return '<svg class="viz" viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="xMinYMin meet" role="img" aria-label="' +
+      esc(opts.title || 'Line chart') + '">' + grid +
+      '<line class="baseline" x1="' + padL + '" y1="' + yAt(0) + '" x2="' + (W - padR) + '" y2="' + yAt(0) + '"></line>' +
+      paths + xlabels + '</svg>' +
+      legend(series.map(function (s, i) { return { label: s.label, color: s.color || seriesColor(i) }; }));
+  }
+
+  /* ------------------------------------------------------------ column bar */
+  function column(opts) {
+    var data = opts.data || [];
+    if (!data.length) return '<p class="empty">No data.</p>';
+    var W = 720, H = opts.height || 210;
+    var padL = 46, padR = 12, padT = 12, padB = 34;
+    var plotW = W - padL - padR, plotH = H - padT - padB;
+    var max = niceMax(Math.max.apply(null, data.map(function (d) { return d.value; }))) || 1;
+    var step = plotW / data.length;
+    var bw = Math.min(step - 8, 46);
+    var fmt = opts.format || U.count;
+    var colorFn = opts.color || function () { return INK; };
+
+    var grid = '';
+    for (var g = 0; g <= 4; g++) {
+      var v = (max / 4) * g, y = padT + plotH - (v / max) * plotH;
+      grid += '<line class="gridline" x1="' + padL + '" y1="' + y + '" x2="' + (W - padR) + '" y2="' + y + '"></line>' +
+              '<text class="axis-label" x="' + (padL - 8) + '" y="' + (y + 4) + '" text-anchor="end">' + esc(fmt(v)) + '</text>';
+    }
+
+    var marks = data.map(function (d, i) {
+      var h = (d.value / max) * plotH;
+      var x = padL + i * step + (step - bw) / 2;
+      var y = padT + plotH - h;
+      return '<g class="mark" data-tip="' + tip(d.key, opts.tipRows ? opts.tipRows(d) : [[opts.measureLabel || 'Value', fmt(d.value)]]) + '"' +
+        (opts.onClick ? ' data-key="' + esc(d.key) + '" style="cursor:pointer"' : '') + '>' +
+        '<path d="' + bar(x, y, bw, Math.max(h, d.value ? 2 : 0), 4, 'top') + '" fill="' + colorFn(d, i) + '"></path>' +
+        '<rect class="hit" x="' + (padL + i * step) + '" y="' + padT + '" width="' + step + '" height="' + plotH + '"></rect>' +
+        '<text class="axis-label" x="' + (x + bw / 2) + '" y="' + (H - 12) + '" text-anchor="middle">' + esc(truncate(d.label || d.key, 12)) + '</text>' +
+      '</g>';
+    }).join('');
+
+    return '<svg class="viz" viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="xMinYMin meet" role="img" aria-label="' +
+      esc(opts.title || 'Column chart') + '">' + grid +
+      '<line class="baseline" x1="' + padL + '" y1="' + (padT + plotH) + '" x2="' + (W - padR) + '" y2="' + (padT + plotH) + '"></line>' +
+      marks + '</svg>';
+  }
+
+  /* -------------------------------------------------------------- sparkline */
+  function sparkline(values, opts) {
+    opts = opts || {};
+    if (!values || values.length < 2) return '';
+    var W = opts.width || 72, H = opts.height || 22;
+    var max = Math.max.apply(null, values) || 1;
+    var d = values.map(function (v, i) {
+      return (i ? 'L' : 'M') + (i / (values.length - 1) * W).toFixed(1) + ',' + (H - (v / max) * (H - 3) - 1.5).toFixed(1);
+    }).join('');
+    return '<svg class="viz stat-spark" width="' + W + '" height="' + H + '" viewBox="0 0 ' + W + ' ' + H + '" aria-hidden="true">' +
+      '<path d="' + d + '" fill="none" stroke="' + (opts.color || 'var(--charcoal)') + '" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" opacity=".75"></path></svg>';
+  }
+
+  /* ---------------------------------------------------------------- bubble */
+  /* Two measures plus a size. Used for the competitive map: footprint across,
+   * observed revenue up, students as the area. One hue - the bubbles are not
+   * categories to be told apart by colour, they are named on the chart. */
+  function bubble(opts) {
+    var data = opts.data || [];   // [{key, x, y, r, us}]
+    if (!data.length) return '<p class="empty">No data.</p>';
+    var W = 720, H = opts.height || 320;
+    var padL = 62, padR = 18, padT = 16, padB = 40;
+    var plotW = W - padL - padR, plotH = H - padT - padB;
+    var maxX = niceMax(Math.max.apply(null, data.map(function (d) { return d.x || 0; }))) || 1;
+    var maxY = niceMax(Math.max.apply(null, data.map(function (d) { return d.y || 0; }))) || 1;
+    var maxR = Math.max.apply(null, data.map(function (d) { return d.r || 0; })) || 1;
+    var fx = opts.formatX || U.count, fy = opts.formatY || U.money, fr = opts.formatR || U.count;
+
+    var grid = '';
+    for (var g = 0; g <= 4; g++) {
+      var vy = (maxY / 4) * g, y = padT + plotH - (vy / maxY) * plotH;
+      grid += '<line class="gridline" x1="' + padL + '" y1="' + y + '" x2="' + (W - padR) + '" y2="' + y + '"></line>' +
+              '<text class="axis-label" x="' + (padL - 8) + '" y="' + (y + 4) + '" text-anchor="end">' + esc(fy(vy)) + '</text>';
+      var vx = (maxX / 4) * g, x = padL + (vx / maxX) * plotW;
+      grid += '<text class="axis-label" x="' + x + '" y="' + (H - 14) + '" text-anchor="middle">' + esc(fx(vx)) + '</text>';
+    }
+
+    var marks = U.sortBy(data, function (d) { return d.r || 0; }, 'desc').map(function (d) {
+      var cx = padL + ((d.x || 0) / maxX) * plotW;
+      var cy = padT + plotH - ((d.y || 0) / maxY) * plotH;
+      var r = 8 + Math.sqrt((d.r || 0) / maxR) * 26;
+      var t = tip(d.key, [
+        [opts.labelX || 'Schools', fx(d.x)],
+        [opts.labelY || 'Observed revenue', fy(d.y)],
+        [opts.labelR || 'Students', fr(d.r)]
+      ]);
+      return '<g class="mark" data-tip="' + t + '"' + (opts.onClick ? ' data-key="' + esc(d.key) + '" style="cursor:pointer"' : '') + '>' +
+        '<circle cx="' + cx.toFixed(1) + '" cy="' + cy.toFixed(1) + '" r="' + r.toFixed(1) + '" fill="' +
+          (d.us ? 'var(--brand)' : INK) + '" fill-opacity="' + (d.us ? '.92' : '.34') + '" stroke="' +
+          (d.us ? 'var(--charcoal)' : INK) + '" stroke-width="1.5"></circle>' +
+        '<text class="value-label strong" x="' + cx.toFixed(1) + '" y="' + (cy - r - 6).toFixed(1) +
+          '" text-anchor="middle">' + esc(truncate(d.key, 16)) + '</text>' +
+      '</g>';
+    }).join('');
+
+    return '<svg class="viz" viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="xMinYMin meet" role="img" aria-label="' +
+      esc(opts.title || 'Bubble chart') + '">' + grid +
+      '<line class="baseline" x1="' + padL + '" y1="' + (padT + plotH) + '" x2="' + (W - padR) + '" y2="' + (padT + plotH) + '"></line>' +
+      marks + '</svg>' +
+      '<div class="chart-note">Across: ' + esc(opts.labelX || 'schools') + ' · Up: ' + esc(opts.labelY || 'observed revenue') +
+      ' · Bubble size: ' + esc(opts.labelR || 'students') + '. Robobox in yellow.</div>';
+  }
+
+  /* --------------------------------------------------------------- helpers */
+  function truncate(s, n) {
+    s = String(s === null || s === undefined ? '' : s);
+    return s.length > n ? s.slice(0, n - 1) + '…' : s;
+  }
+
+  /* One delegated tooltip layer for every chart on the page. */
+  function initTooltip() {
+    var tipEl = document.getElementById('tooltip');
+    if (!tipEl) return;
+    document.addEventListener('mouseover', function (e) {
+      var t = e.target.closest ? e.target.closest('[data-tip]') : null;
+      if (!t) return;
+      tipEl.innerHTML = t.getAttribute('data-tip');
+      tipEl.hidden = false;
+      position(e);
+    });
+    document.addEventListener('mousemove', function (e) {
+      if (!tipEl.hidden) position(e);
+    });
+    document.addEventListener('mouseout', function (e) {
+      var t = e.target.closest ? e.target.closest('[data-tip]') : null;
+      if (t) tipEl.hidden = true;
+    });
+    function position(e) {
+      var pad = 14;
+      var r = tipEl.getBoundingClientRect();
+      var x = e.clientX + pad, y = e.clientY + pad;
+      if (x + r.width > window.innerWidth - 8) x = e.clientX - r.width - pad;
+      if (y + r.height > window.innerHeight - 8) y = e.clientY - r.height - pad;
+      tipEl.style.left = Math.max(8, x) + 'px';
+      tipEl.style.top = Math.max(8, y) + 'px';
+    }
+  }
+
+  return {
+    INK: INK, STATUS: STATUS, seriesColor: seriesColor, ordinalColor: ordinalColor, seqColor: seqColor,
+    hbar: hbar, funnel: funnel, line: line, column: column, bubble: bubble,
+    sparkline: sparkline, legend: legend, initTooltip: initTooltip, truncate: truncate
+  };
+})();

@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Robobox Connect</title>
+<meta name="theme-color" content="#F2BE14">
+<meta name="description" content="Log a Connect. Every school interaction becomes structured sales intelligence.">
+<link rel="icon" href="assets/img/robobox-mark.webp?v=2aaecc7c85">
+<link rel="apple-touch-icon" href="assets/img/robobox-mark.webp?v=2aaecc7c85">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap">
+<link rel="stylesheet" href="assets/css/app.css?v=2aaecc7c85">
+</head>
+<body>
+
+<div id="login" class="login" hidden>
+  <div class="login-card">
+    <div class="login-brand"><img src="assets/img/robobox-logo.webp?v=2aaecc7c85" alt="The Robobox" width="190" height="76"><em>Connect</em></div>
+    <p class="login-sub">Log what you just did. The system works out the rest.</p>
+    <form id="login-form" autocomplete="off">
+      <label class="field"><span class="field-label">Who are you?</span>
+        <select id="login-user" class="input"></select></label>
+      <label class="field"><span class="field-label">Access code</span>
+        <input id="login-pin" class="input" type="password" autocomplete="current-password"></label>
+      <button class="btn btn-primary btn-lg btn-block" type="submit">Sign in</button>
+      <p id="login-error" class="login-error" hidden></p>
+    </form>
+    <p class="login-hint">Demo build — the access code is your first name in lowercase.</p>
+  </div>
+</div>
+
+<div id="shell" class="shell" hidden>
+  <nav class="sidebar" id="sidebar"></nav>
+  <div class="col">
+    <header class="topbar">
+      <button class="icon-btn nav-toggle" id="nav-toggle" aria-label="Menu">&#9776;</button>
+      <div class="topbar-search">
+        <span class="search-ico" aria-hidden="true">&#9906;</span>
+        <input id="global-search" type="search" placeholder="Search schools, contacts&hellip;" autocomplete="off">
+        <div id="search-results" hidden></div>
+      </div>
+      <div class="topbar-right">
+        <button class="btn btn-primary btn-sm top-log" id="top-log">+ Log Connect</button>
+        <button class="icon-btn ring" id="theme-toggle" title="Switch theme" aria-label="Switch theme">&#9681;</button>
+        <button class="btn btn-sm" id="logout">Sign out</button>
+      </div>
+    </header>
+    <main class="main" id="main" tabindex="-1"></main>
+  </div>
+  <button class="fab" id="fab">+ Log Connect</button>
+</div>
+
+<div id="modal-root" class="modal-root" hidden>
+  <div class="modal-backdrop" data-close="1"></div>
+  <div class="modal" role="dialog" aria-modal="true">
+    <header class="modal-head"><h2 id="modal-title"></h2>
+      <button class="icon-btn" data-close="1" aria-label="Close">&times;</button></header>
+    <div class="modal-body" id="modal-body"></div>
+  </div>
+</div>
+
+<div id="tooltip" class="viz-tooltip" hidden></div>
+<div id="toast" class="toast" hidden></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="assets/js/util.js?v=3.0.0"></script>
+<script src="assets/js/model.js?v=3.0.0"></script>
+<script src="assets/js/store.js?v=3.0.0"></script>
+<script src="assets/js/auth.js?v=3.0.0"></script>
+<script src="assets/js/charts.js?v=3.0.0"></script>
+<script src="assets/js/ui.js?v=3.0.0"></script>
+<script src="assets/js/filters.js?v=3.0.0"></script>
+<script src="assets/js/excel.js?v=3.0.0"></script>
+<script src="assets/js/connect-form.js?v=3.0.0"></script>
+<script src="assets/js/views.js?v=3.0.0"></script>
+<script src="assets/js/ceo.js?v=3.0.0"></script>
+<script src="assets/js/app.js?v=3.0.0"></script>
+</body>
+</html>
