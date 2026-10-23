@@ -101,8 +101,8 @@ check.strictEqual(M.priceFor('Robobox Kits', null, null, { bands: {} }).sp, 0,
   'no standards chosen yet is zero, not the illustrative split');
 
 /* ---- the renamed products ------------------------------------------------ */
-check.strictEqual(M.offeringOf('STEM Lab'), 'Composite Skill Labs + Kits Curriculum',
-  'STEM Lab deals read as Composite Skill Labs + Kits Curriculum');
+check.strictEqual(M.offeringOf('STEM Lab'), 'Innovation Stem Lab + Curriculum',
+  'STEM Lab deals read as Innovation Stem Lab + Curriculum — the sheet\'s first product');
 check.strictEqual(M.offeringOf('Advanced Lab'), 'Advance Composite Skill Lab + Curriculum',
   'Advanced Lab deals read as Advance Composite Skill Lab + Curriculum');
 check.strictEqual(M.offeringOf('Kit Class'), 'RBX Kits + Curriculum',
@@ -183,5 +183,24 @@ check.strictEqual(parth.pct, 0, 'so achievement reads 0%, not NaN');
 const nobody = M.productTargets('NOT-A-PERSON', vs => vs);
 check.strictEqual(nobody.inPlan, false, 'somebody outside the plan is flagged as such');
 check.strictEqual(nobody.pct, null, 'and has no percentage rather than a false 0%');
+
+/* the picker offers what the price list holds, so a new deal is created
+ * under the new name rather than an old one that then needs aliasing ---- */
+check.deepStrictEqual(M.V.coreOfferings, M.CATALOGUE.map(c => c.key),
+  'the picker lists exactly the catalogue products');
+check.deepStrictEqual(M.V.offering, M.CATALOGUE.map(c => c.key).concat('Workshop'),
+  'plus Workshop, which is sold but carries no sheet price');
+['Advanced Lab Pro', 'Advanced Lab', 'STEM Lab', 'Kit Class'].forEach(old => {
+  check.strictEqual(M.V.offering.indexOf(old), -1, old + ' is off the picker');
+});
+Object.keys(M.OFFERING_ALIAS).forEach(from => {
+  check.ok(M.V.offering.indexOf(M.OFFERING_ALIAS[from]) > -1,
+    from + ' renames to something the picker offers');
+});
+check.strictEqual(M.V.offeringLabel['Bagless'], 'Bagless Skills',
+  'Bagless still reads as Bagless Skills');
+M.CATALOGUE.forEach(c => {
+  check.ok(M.V.offeringDetail[c.key], c.key + ' has a line of help under it');
+});
 
 console.log('targets: all ' + checks + ' assertions passed');

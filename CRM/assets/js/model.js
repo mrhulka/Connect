@@ -53,24 +53,9 @@ RB.model = (function () {
     leadSource: ['Cold', 'Eldrocks', '91 Media', 'BNI', 'Referral', 'Existing Relationship',
       'Internal', 'Event / Exhibition', 'Other'],
 
-    /* Opportunity type. The stored value stays what it has always been so the
-     * imported opportunities keep resolving; only the label changed. */
-    offering: ['Advanced Lab Pro', 'Advanced Lab', 'STEM Lab', 'Kit Class', 'Bagless', 'Workshop'],
-
-    coreOfferings: ['Advanced Lab Pro', 'Advanced Lab', 'STEM Lab', 'Kit Class', 'Bagless'],
-
-    offeringLabel: { 'Bagless': 'Bagless Skills' },
-
-    /* What each offering includes - shown under the picker so the rep chooses
-     * the right one without a price list open. */
-    offeringDetail: {
-      'Advanced Lab Pro': 'Top slab — lab, teachers, kits, curriculum',
-      'Advanced Lab': 'Lab with teachers · kits · curriculum',
-      'STEM Lab': 'STEM lab with teachers · curriculum',
-      'Kit Class': 'Kits and classes, no lab build',
-      'Bagless': 'Bagless skills, sold per activity',
-      'Workshop': 'Paid workshops run for the school'
-    },
+    /* Opportunity type. offering / coreOfferings / offeringLabel /
+     * offeringDetail are filled from CATALOGUE further down, so the picker
+     * offers exactly what the price list holds. */
 
     baglessActivity: ['Hydroponics', 'Planetarium', 'Bank in School', 'Pottery',
       'Animal Bonding', 'Industry 4.0'],
@@ -151,7 +136,7 @@ RB.model = (function () {
    * on the server until a deal is next saved, so it is reversible: take an
    * entry out and those deals read as they did before. */
   var OFFERING_ALIAS = {
-    'STEM Lab': 'Composite Skill Labs + Kits Curriculum',
+    'STEM Lab': 'Innovation Stem Lab + Curriculum',
     'Advanced Lab': 'Advance Composite Skill Lab + Curriculum',
     'Kit Class': 'RBX Kits + Curriculum'
     // 'Bagless' stays Bagless.
@@ -1024,6 +1009,20 @@ RB.model = (function () {
         'Hydroponics', 'Planetarium', 'Bank in School', 'Pottery', 'Animal Bonding', 'Industry 4.0'
       ] }
   ];
+
+  /* The picker reads off the catalogue: one list to keep in step, and a new
+   * deal is created under the name the price list uses. Workshop is sold but
+   * isn't in the costing sheet, so it hangs off the end with no price. */
+  V.offering = CATALOGUE.map(function (c) { return c.key; }).concat('Workshop');
+  V.coreOfferings = CATALOGUE.map(function (c) { return c.key; });
+  V.offeringLabel = CATALOGUE.reduce(function (m, c) {
+    if (c.label !== c.key) m[c.key] = c.label;
+    return m;
+  }, {});
+  V.offeringDetail = CATALOGUE.reduce(function (m, c) {
+    m[c.key] = c.includes || 'Sold per activity';
+    return m;
+  }, { 'Workshop': 'Paid workshops run for the school' });
 
   /* Every priceable line: the four labs plus one row per bagless activity,
    * plus anything already in the data that the catalogue does not name, so no
