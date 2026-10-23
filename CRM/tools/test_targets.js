@@ -193,6 +193,13 @@ check.deepStrictEqual(M.V.offering, M.CATALOGUE.map(c => c.key).concat('Workshop
 ['Advanced Lab Pro', 'Advanced Lab', 'STEM Lab', 'Kit Class'].forEach(old => {
   check.strictEqual(M.V.offering.indexOf(old), -1, old + ' is off the picker');
 });
+check.ok(M.OFFERING_RETIRED['Advanced Lab Pro'], 'Advanced Lab Pro is retired');
+check.strictEqual(M.CATALOGUE.filter(c => c.key === 'Advanced Lab Pro').length, 0,
+  'and is not in the price list');
+Object.keys(M.OFFERING_RETIRED).forEach(gone => {
+  check.strictEqual(M.OFFERING_ALIAS[gone], undefined,
+    gone + ' is dropped, not renamed into something else');
+});
 Object.keys(M.OFFERING_ALIAS).forEach(from => {
   check.ok(M.V.offering.indexOf(M.OFFERING_ALIAS[from]) > -1,
     from + ' renames to something the picker offers');

@@ -45,22 +45,27 @@ RB.store = (function () {
       state = (stored && stored.schools && stored.version === 2) ? stored : {
         version: 2, meta: { source: 'MySQL Database' }, users: [], schools: [], contacts: [], opportunities: [], connects: []
       };
-      renameOfferings();
+      reconcileOfferings();
       return state;
     });
   }
 
-  /* The products were renamed, and deals on the books still carry the old
-   * names. Mapping them here, once, as the data arrives means every screen,
-   * every roll-up and every export sees the new name without any of them
-   * knowing a rename happened. The server keeps the old value until that deal
-   * is next saved, so nothing is rewritten behind anyone's back.
-   * The map itself is OFFERING_ALIAS in model.js. */
-  function renameOfferings() {
-    state.opportunities.forEach(function (o) {
+  /* The product list changed under the data: some products were renamed and
+   * one was retired. Settling both here, once, as the data arrives means
+   * every screen, every roll-up and every export sees the current list
+   * without any of them knowing anything happened. Nothing is rewritten on
+   * the server, so both are reversible from model.js — OFFERING_ALIAS for
+   * the renames, OFFERING_RETIRED for what is gone. */
+  function reconcileOfferings() {
+    var dropped = {};
+    state.opportunities = state.opportunities.filter(function (o) {
+      if (RB.model.OFFERING_RETIRED[o.offering]) { dropped[o.id] = true; return false; }
       var to = RB.model.offeringOf(o.offering);
       if (to !== o.offering) { o.renamedFrom = o.offering; o.offering = to; }
+      return true;
     });
+    // A connect only makes sense against the deal it was logged on.
+    state.connects = state.connects.filter(function (c) { return !dropped[c.opportunityId]; });
   }
 
   function commit(change) {

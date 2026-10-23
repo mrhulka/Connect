@@ -140,9 +140,15 @@ RB.model = (function () {
     'Advanced Lab': 'Advance Composite Skill Lab + Curriculum',
     'Kit Class': 'RBX Kits + Curriculum'
     // 'Bagless' stays Bagless.
-    // 'Advanced Lab Pro' is deliberately absent — see the note to Parth.
   };
   function offeringOf(name) { return OFFERING_ALIAS[name] || name || null; }
+
+  /* Retired products. A deal tagged with one of these is dropped as the data
+   * loads, along with the connects logged against it, so nothing in the app
+   * counts it: not the pipeline, not a target, not the export. The record
+   * itself is left alone on the server, so taking a name out of here brings
+   * those deals back. The school stays either way — it is still a real lead. */
+  var OFFERING_RETIRED = { 'Advanced Lab Pro': true };
 
   /* Only used to pre-select the stage picker from the response, so the common
    * case is one tap. The rep's choice always wins and is what gets stored. */
@@ -1725,7 +1731,7 @@ RB.model = (function () {
   return {
     V: V, STAGES: STAGES, KIT_BANDS: KIT_BANDS,
     salesYears: salesYears, currentSalesYear: currentSalesYear,
-    OFFERING_ALIAS: OFFERING_ALIAS, offeringOf: offeringOf, RANK: RANK, CLOSED: CLOSED, suggestStage: suggestStage, DIMENSIONS: DIMENSIONS,
+    OFFERING_ALIAS: OFFERING_ALIAS, OFFERING_RETIRED: OFFERING_RETIRED, offeringOf: offeringOf, RANK: RANK, CLOSED: CLOSED, suggestStage: suggestStage, DIMENSIONS: DIMENSIONS,
     connectsFor: connectsFor, view: view, views: views, invalidate: invalidate,
     tasks: tasks, calendar: calendar, scorecard: scorecard, RANGES: RANGES,
     funnel: funnel, commercialFunnel: commercialFunnel, groupBy: groupBy, rollup: rollup,
