@@ -14,12 +14,17 @@ RB.store = (function () {
     read: function () {
       return fetch(API_BASE + '/api/state')
         .then(function (res) {
-          if (!res.ok) throw new Error('Failed to fetch state from server');
+          if (!res.ok) throw new Error('The server at ' + API_BASE + ' answered ' + res.status + '.');
           return res.json();
-        })
-        .catch(function (err) {
-          console.error('API Read Error:', err);
-          return null;
+        }, function () {
+          /* The call never reached the server, or the browser blocked the
+           * reply. Nearly always one of two things: the API is down, or this
+           * page is served from an origin the API does not allow (CORS).
+           * Swallowing this used to boot the app with no data at all — an
+           * empty sign-in list and no clue why — so it is thrown on to the
+           * error screen instead. */
+          throw new Error('Could not reach ' + API_BASE + ' from ' + location.origin +
+            '. The API is either down, or not allowing this address to call it.');
         });
     },
     save: function (change, currentState) {
@@ -45,6 +50,11 @@ RB.store = (function () {
       state = (stored && stored.schools && stored.version === 2) ? stored : {
         version: 2, meta: { source: 'MySQL Database' }, users: [], schools: [], contacts: [], opportunities: [], connects: []
       };
+      /* No people means nobody can sign in, so the sign-in screen would just
+       * sit there with an empty list. Say what happened instead. */
+      if (!state.users.length) {
+        throw new Error('The server at ' + API_BASE + ' sent no people to sign in as.');
+      }
       reconcileOfferings();
       return state;
     });
