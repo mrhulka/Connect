@@ -207,6 +207,8 @@ RB.views = (function () {
         ? '<p class="small muted">Targets are set once by the CEO in Settings and apply to everyone.</p>'
         : '') +
 
+      targetTable(key) +
+
       '<div class="section-title">My Actions<span class="st-sub">the 5 that matter most</span></div>' +
       (steps.length ? taskList(steps) : '<div class="empty">Nothing outstanding.</div>');
     bindRange(host, function (r) { scoreRange = r; myScorecard(host); });
@@ -217,6 +219,53 @@ RB.views = (function () {
                         { title: me().name, filters: F.describe() });
     });
     bindTasks(host);
+  }
+
+  /* The year's plan, product by product, against what has actually been won.
+   * Counts first because that is how the plan is written - "six Innovation
+   * Stem Labs" - with the rupee value beside it. */
+  function targetTable(ownerKey) {
+    var t = M.productTargets(ownerKey, F.apply);
+    if (!t.inPlan) {
+      return '<div class="section-title">My targets</div>' +
+        '<div class="empty">No target set for ' + U.esc(ownerKey) + ' in this year\'s plan.</div>';
+    }
+    return '<div class="section-title">My targets' +
+        '<span class="st-sub">the year\'s plan, against deals won</span></div>' +
+      '<div class="table-wrap"><table class="data"><thead><tr>' +
+        '<th>Product</th><th class="num">Target</th><th class="num">Won</th>' +
+        '<th class="num">Target value</th><th class="num">Won value</th>' +
+        '<th class="num">Achieved</th></tr></thead><tbody>' +
+      t.rows.map(function (r) { return targetRow(r); }).join('') +
+      '</tbody><tfoot><tr>' +
+        '<td class="strong">Total</td>' +
+        '<td class="num strong">' + U.count(t.targetCount) + '</td>' +
+        '<td class="num strong">' + U.count(t.wonCount) + '</td>' +
+        '<td class="num strong">' + U.money(t.targetValue) + '</td>' +
+        '<td class="num strong">' + U.money(t.wonValue) + '</td>' +
+        '<td class="num strong">' + pctCell(t.pct) + '</td>' +
+      '</tr></tfoot></table></div>';
+  }
+
+  /* One product line. A one-time sale is marked, because its target is a
+   * flat price rather than anything per student. */
+  function targetRow(r) {
+    return '<tr><td>' + U.esc(r.label) +
+        (r.oneTime ? ' <span class="tag">one-time</span>' : '') +
+        (r.other ? ' <span class="tag">not in the plan</span>' : '') + '</td>' +
+      '<td class="num">' + (r.targetCount ? U.count(r.targetCount) : '<span class="muted">—</span>') + '</td>' +
+      '<td class="num">' + (r.wonCount ? U.count(r.wonCount) : '<span class="muted">—</span>') + '</td>' +
+      '<td class="num">' + (r.targetValue ? U.money(r.targetValue) : '<span class="muted">—</span>') + '</td>' +
+      '<td class="num">' + (r.wonValue ? U.money(r.wonValue) : '<span class="muted">—</span>') + '</td>' +
+      '<td class="num">' + pctCell(r.pct) + '</td></tr>';
+  }
+
+  /* Colour means the same thing here as on the KPI tiles: on track, behind,
+   * well behind. Nothing to show where there is no target to be behind. */
+  function pctCell(pct) {
+    if (pct == null) return '<span class="muted">—</span>';
+    var cls = pct >= 100 ? '' : pct < 50 ? 'tag-red' : 'tag-warm';
+    return '<span class="tag ' + cls + '">' + Math.round(pct) + '%</span>';
   }
 
   function rangeBar(current) {

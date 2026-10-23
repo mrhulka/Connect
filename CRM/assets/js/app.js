@@ -209,9 +209,17 @@ RB.app = (function () {
         rows += '<div class="price-group"><h4>' + U.esc(group) + '</h4></div>';
       }
       if (!l.group) group = null;
-      var v = p[l.id] || {};
+      // The stored override if there is one, otherwise the costing sheet's own
+      // figure - so the card arrives filled in rather than reading "not priced"
+      // for products that do in fact have a price.
+      var stored = p[l.id] || {};
+      var v = {
+        price: stored.price != null ? stored.price : l.defaultPrice,
+        base: stored.base != null ? stored.base : l.defaultBase
+      };
       rows += '<div class="price-row" data-price="' + U.esc(l.id) + '">' +
         '<span class="price-name">' + U.esc(l.label) +
+          (l.includes ? '<small>' + U.esc(l.includes) + '</small>' : '') +
           (l.legacy ? '<small>already used by live opportunities</small>' : '') +
           (l.removable ? '<button type="button" class="price-drop" data-drop-activity="' +
             U.esc(l.activity) + '" title="Remove ' + U.esc(l.activity) + '" ' +
@@ -228,11 +236,15 @@ RB.app = (function () {
       'Price × (school students ÷ base students). Leave a row blank and it simply will not auto-calculate.',
       '<div class="price-head"><span>Offering</span><span>Price (₹)</span>' +
       '<span>Base students</span><span></span></div>' + rows +
-      '<form id="add-activity" class="row wrap" style="margin-top:16px;gap:10px">' +
-        '<input class="input" name="activity" placeholder="Add a bagless activity" ' +
-          'style="flex:1 1 220px;width:auto" required>' +
-        '<button class="btn" type="submit">Add activity</button>' +
-      '</form>' +
+      // Only shown while some product actually has sub-activities; the current
+      // catalogue has none, so this stays out of the way.
+      (M.activities().length || M.priceLines().some(function (l) { return l.removable; })
+        ? '<form id="add-activity" class="row wrap" style="margin-top:16px;gap:10px">' +
+          '<input class="input" name="activity" placeholder="Add an activity" ' +
+            'style="flex:1 1 220px;width:auto" required>' +
+          '<button class="btn" type="submit">Add activity</button>' +
+        '</form>'
+        : '') +
       '<p class="field-hint" style="margin-top:14px">Saved as you type. A priced slab pre-fills the ' +
       'opportunity size on a new connect, so potential revenue is tracked before any negotiation. ' +
       'The bagless list is yours to write — add or remove activities above.</p>');
@@ -240,12 +252,14 @@ RB.app = (function () {
 
   function priceNote(v) {
     if (!v.price) return 'not priced';
-    if (!v.base) return U.money(v.price) + ' flat';
-    return U.money(v.price / v.base) + ' per student';
+    if (!v.base) return U.money(v.price) + ' flat — one-time sale';
+    return U.money(v.price / v.base) + ' per student · ' + U.money(v.price) +
+           ' per ' + U.count(v.base);
   }
 
   function bindPricing(host) {
-    host.querySelector('#add-activity').addEventListener('submit', function (e) {
+    var addAct = host.querySelector('#add-activity');
+    if (addAct) addAct.addEventListener('submit', function (e) {
       e.preventDefault();
       var name = UI.values(this).activity;
       if (!name) return;

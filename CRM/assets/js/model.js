@@ -613,6 +613,136 @@ RB.model = (function () {
     { key: 'businessWon', label: 'Business Won', money: true }
   ];
 
+  /* ================================================== targets per person ==== */
+  /* The annual plan, straight from the targets sheet: how many of each product
+   * each salesperson is to sell.
+   *
+   * Counts only. The rupee target is the count times the rate card, so there
+   * is one number to maintain rather than two that drift apart - and every
+   * value in the sheet is exactly that product already.
+   *
+   * Lives here rather than in Settings because it is the same plan for
+   * everyone and the app's own storage is per browser: a target typed into one
+   * laptop would be invisible on every other. Moving it to the backend is a
+   * one-line swap once there is an endpoint for it.
+   * ponytail: edit this table to change the plan; no UI for it until the year
+   * actually changes mid-flight. */
+  var TARGETS = {
+    'PARTH': {
+      'Innovation Stem Lab + Curriculum': 6, 'Advance Composite Skill Lab + Curriculum': 4,
+      'RBX Kits + Curriculum': 2, 'Composite Skill Labs + Kits Curriculum': 2,
+      'Composite Skill Lab (One Time Sale)': 2, 'Robobox Kits': 0
+    },
+    'AYUSH': {
+      'Innovation Stem Lab + Curriculum': 5, 'Advance Composite Skill Lab + Curriculum': 3,
+      'RBX Kits + Curriculum': 2, 'Composite Skill Labs + Kits Curriculum': 2,
+      'Composite Skill Lab (One Time Sale)': 3, 'Robobox Kits': 0
+    },
+    'SACHIN C': {
+      'Innovation Stem Lab + Curriculum': 4, 'Advance Composite Skill Lab + Curriculum': 1,
+      'RBX Kits + Curriculum': 0, 'Composite Skill Labs + Kits Curriculum': 0,
+      'Composite Skill Lab (One Time Sale)': 1, 'Robobox Kits': 2
+    },
+    'SID': {
+      'Innovation Stem Lab + Curriculum': 3, 'Advance Composite Skill Lab + Curriculum': 0,
+      'RBX Kits + Curriculum': 0, 'Composite Skill Labs + Kits Curriculum': 0,
+      'Composite Skill Lab (One Time Sale)': 0, 'Robobox Kits': 3
+    },
+    'BHAVIK': {
+      'Innovation Stem Lab + Curriculum': 3, 'Advance Composite Skill Lab + Curriculum': 0,
+      'RBX Kits + Curriculum': 1, 'Composite Skill Labs + Kits Curriculum': 0,
+      'Composite Skill Lab (One Time Sale)': 1, 'Robobox Kits': 1
+    },
+    'SURAJ K': {
+      'Innovation Stem Lab + Curriculum': 3, 'Advance Composite Skill Lab + Curriculum': 1,
+      'RBX Kits + Curriculum': 0, 'Composite Skill Labs + Kits Curriculum': 0,
+      'Composite Skill Lab (One Time Sale)': 1, 'Robobox Kits': 2
+    },
+    'GAURAV': {
+      'Innovation Stem Lab + Curriculum': 6, 'Advance Composite Skill Lab + Curriculum': 1,
+      'RBX Kits + Curriculum': 0, 'Composite Skill Labs + Kits Curriculum': 1,
+      'Composite Skill Lab (One Time Sale)': 2, 'Robobox Kits': 2
+    }
+  };
+
+  /* Everyone the plan names, whether or not they have a login yet. */
+  function targetOwners() { return Object.keys(TARGETS); }
+
+  /** The unit price the plan values a product at - the rate card, so a price
+   *  change moves the target with it. */
+  function unitPrice(offering) {
+    var row = prices()[offering];
+    if (row && row.price != null) return row.price;
+    var c = catalogueRow(offering);
+    return c && c.price != null ? c.price : 0;
+  }
+
+  /* Target against actual, per product, for one salesperson.
+   *
+   * "Achieved" is deals WON, not deals in play: a target is a sales number,
+   * and counting a proposal towards it would report a year that has not
+   * happened. `filter` is the dashboard's filter, so the figure follows
+   * whatever the page is showing. */
+  function productTargets(ownerKey, filter) {
+    var plan = TARGETS[String(ownerKey || '').toUpperCase()] || {};
+    var won = (filter ? filter(views()) : views()).filter(function (v) {
+      return v.owner === ownerKey && v.status === 'Won';
+    });
+    var rows = CATALOGUE.map(function (c) {
+      var n = plan[c.key] || 0;
+      var mine = won.filter(function (v) { return v.opp.offering === c.key; });
+      var value = U.sum(mine, function (v) { return v.closed || v.current || 0; });
+      var target = n * unitPrice(c.key);
+      return {
+        key: c.key, label: c.label, oneTime: !!c.oneTime,
+        targetCount: n, targetValue: target,
+        wonCount: mine.length, wonValue: value, rows: mine,
+        pct: target ? (value / target) * 100 : null
+      };
+    });
+    // Anything won that the plan does not name still counts towards the total,
+    // so the money on the page always adds up to the money in the book.
+    var named = {};
+    CATALOGUE.forEach(function (c) { named[c.key] = true; });
+    var other = won.filter(function (v) { return !named[v.opp.offering]; });
+    if (other.length) {
+      rows.push({
+        key: '—', label: 'Other / older offerings', oneTime: false, other: true,
+        targetCount: 0, targetValue: 0,
+        wonCount: other.length, rows: other,
+        wonValue: U.sum(other, function (v) { return v.closed || v.current || 0; }),
+        pct: null
+      });
+    }
+    var targetValue = U.sum(rows, function (r) { return r.targetValue; });
+    var wonValue = U.sum(rows, function (r) { return r.wonValue; });
+    return {
+      owner: ownerKey, rows: rows,
+      inPlan: !!TARGETS[String(ownerKey || '').toUpperCase()],
+      targetCount: U.sum(rows, function (r) { return r.targetCount; }),
+      wonCount: U.sum(rows, function (r) { return r.wonCount; }),
+      targetValue: targetValue, wonValue: wonValue,
+      pct: targetValue ? (wonValue / targetValue) * 100 : null
+    };
+  }
+
+  /* Every salesperson in the plan, plus anyone selling who is not in it. */
+  function allTargets(filter) {
+    var keys = targetOwners().slice();
+    RB.store.users().forEach(function (u) {
+      if (u.ownerKey && keys.indexOf(u.ownerKey.toUpperCase()) === -1) keys.push(u.ownerKey);
+    });
+    return keys.map(function (k) {
+      var t = productTargets(k, filter);
+      var u = RB.store.users().filter(function (x) {
+        return x.ownerKey && x.ownerKey.toUpperCase() === k.toUpperCase();
+      })[0];
+      t.name = u ? u.name : k;
+      t.hasLogin = !!u;
+      return t;
+    });
+  }
+
   function performanceOf(ownerKey, range, filter) {
     var vs = (filter ? filter(views()) : views()).filter(function (v) { return v.owner === ownerKey; });
     var keep = {};
@@ -780,16 +910,39 @@ RB.model = (function () {
    * `stored` is the value already on record for that offering, so renaming a
    * label never orphans the 169 imported opportunities.
    */
+  /* The products Robobox sells, and what each costs, from the costing sheet.
+   *
+   * The first four are priced for a 700-student school and charged pro rata on
+   * the actual roll, so a 350-student school is half. `price` is the whole
+   * package - lab plus two teachers plus textbook and exam where the sheet
+   * includes them - not the lab on its own.
+   *
+   * The last two are one-time sales. They are flat: `base: null` means the
+   * student count does not come into it, which is what makes the rate card
+   * read "flat rate" rather than pro-rating something that was never per head.
+   *
+   * These are defaults, not a lock. Anything Parth types into Settings
+   * overrides the row; clearing it falls back to here. */
   var CATALOGUE = [
-    { key: 'Advanced Lab Pro', label: 'Advanced Lab Pro' },
-    { key: 'Advanced Lab', label: 'Advanced Lab' },
-    { key: 'STEM Lab', label: 'Stem Lab' },
-    { key: 'Kit Class', label: 'Kit Class' },
-    {
-      key: 'Bagless', label: 'Bagless Skills', activities: [
-        'Hydroponics', 'Planetarium', 'Bank in School', 'Pottery', 'Animal Bonding', 'Industry 4.0'
-      ]
-    }
+    { key: 'Innovation Stem Lab + Curriculum', label: 'Innovation Stem Lab + Curriculum',
+      price: 1511738.1196, base: 700,
+      includes: 'STEM Lab + 2 Teachers + Text book / Exam' },
+    { key: 'Advance Composite Skill Lab + Curriculum', label: 'Advance Composite Skill Lab + Curriculum',
+      price: 2002527, base: 700,
+      includes: 'Composite Skill Lab + 2 Teachers + Text book / Exam' },
+    { key: 'RBX Kits + Curriculum', label: 'RBX Kits + Curriculum',
+      price: 2294610, base: 700,
+      includes: 'Kits + 2 Teachers + Text book / Exam' },
+    { key: 'Composite Skill Labs + Kits Curriculum', label: 'Composite Skill Labs + Kits Curriculum',
+      price: 2977137, base: 700,
+      includes: 'Composite Skill Lab + Kits + 2 Teachers' },
+    // One-time sales: a fixed price, not a per-student rate.
+    { key: 'Composite Skill Lab (One Time Sale)', label: 'Composite Skill Lab (One Time Sale)',
+      price: 982527, base: null, oneTime: true, mrp: 1403610,
+      includes: 'Selling price; MRP ' + '\u20b9' + '14,03,610' },
+    { key: 'Robobox Kits', label: 'Robobox Kits',
+      price: 419864, base: null, oneTime: true,
+      includes: 'One-time sale only — offered to schools under 300 students' }
   ];
 
   /* Every priceable line: the four labs plus one row per bagless activity,
@@ -813,7 +966,13 @@ RB.model = (function () {
   function priceLines() {
     var lines = [];
     CATALOGUE.forEach(function (c) {
-      if (!c.activities) return lines.push({ id: c.key, offering: c.key, label: c.label });
+      if (!c.activities) return lines.push({
+        id: c.key, offering: c.key, label: c.label,
+        // What the costing sheet says, shown in Settings until Parth types
+        // something else over it.
+        defaultPrice: c.price, defaultBase: c.base,
+        oneTime: !!c.oneTime, includes: c.includes || null
+      });
       activities().forEach(function (a) {
         lines.push({
           id: c.key + ' · ' + a, offering: c.key, activity: a, label: a,
@@ -854,8 +1013,20 @@ RB.model = (function () {
   /* What one opportunity is worth at list price, pro rata on the roll.
    * Returns null - never a guess - when the slab is unpriced or the school's
    * student count is unknown. */
+  /* The catalogue's own price, used when Settings has nothing for that row -
+   * so the rate card arrives filled in from the costing sheet rather than
+   * blank, and a deal can be sized on day one. */
+  function catalogueRow(id) {
+    return CATALOGUE.filter(function (c) { return c.key === id; })[0] || null;
+  }
+
   function priceFor(offering, activity, students) {
-    var row = prices()[activity ? offering + ' · ' + activity : offering];
+    var id = activity ? offering + ' · ' + activity : offering;
+    var row = prices()[id];
+    if (!row || row.price == null) {
+      var c = catalogueRow(id);
+      if (c && c.price != null) row = { price: c.price, base: c.base };
+    }
     if (!row || !row.price) return null;
     var base = row.base;
     if (!base) return {
@@ -1428,6 +1599,8 @@ RB.model = (function () {
     business: business, stageBoard: stageBoard, performance: performance, advancedIn: advancedIn,
     journey: journey, health: health, stageOf: stageOf, STAGE_ALIAS: STAGE_ALIAS,
     PERFORMANCE: PERFORMANCE, performanceOf: performanceOf, topSteps: topSteps,
+    TARGETS: TARGETS, targetOwners: targetOwners, productTargets: productTargets,
+    allTargets: allTargets, unitPrice: unitPrice,
     blockerRisk: blockerRisk, needsAttention: needsAttention, competitors: competitors,
     leadSources: leadSources, segments: segments, salesSpeed: salesSpeed,
     winningProfile: winningProfile, fitModel: fitModel, lookalikes: lookalikes,

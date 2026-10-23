@@ -66,6 +66,90 @@ RB.ceo = (function () {
     });
   }
 
+  /* The year's plan for the whole team: who is on what, and how much of it is
+   * actually won. One row per salesperson, the products behind each row a
+   * click away, so the page answers "are we on track" before it answers
+   * "on what". */
+  function teamTargets() {
+    var all = M.allTargets(F.apply);
+    var inPlan = all.filter(function (t) { return t.inPlan; });
+    if (!inPlan.length) return '';
+    var tot = {
+      targetCount: U.sum(inPlan, function (t) { return t.targetCount; }),
+      wonCount: U.sum(inPlan, function (t) { return t.wonCount; }),
+      targetValue: U.sum(inPlan, function (t) { return t.targetValue; }),
+      wonValue: U.sum(inPlan, function (t) { return t.wonValue; })
+    };
+    tot.pct = tot.targetValue ? (tot.wonValue / tot.targetValue) * 100 : null;
+
+    // Anyone selling who the plan does not name - so a gap in the plan shows
+    // up here rather than quietly going unmeasured.
+    var unplanned = all.filter(function (t) { return !t.inPlan && t.wonCount; });
+
+    return '<div class="section-title">Targets' +
+        '<span class="st-sub">the year\'s plan against deals won</span></div>' +
+      '<div class="table-wrap"><table class="data"><thead><tr>' +
+        '<th>Salesperson</th><th class="num">Target</th><th class="num">Won</th>' +
+        '<th class="num">Target value</th><th class="num">Won value</th>' +
+        '<th class="num">Achieved</th></tr></thead><tbody>' +
+      inPlan.map(function (t) {
+        return '<tr class="row-link" data-target-owner="' + U.esc(t.owner) + '">' +
+          '<td class="strong">' + U.esc(t.name) +
+            (t.hasLogin ? '' : ' <span class="tag tag-red">no login</span>') + '</td>' +
+          '<td class="num">' + U.count(t.targetCount) + '</td>' +
+          '<td class="num">' + U.count(t.wonCount) + '</td>' +
+          '<td class="num">' + U.money(t.targetValue) + '</td>' +
+          '<td class="num">' + U.money(t.wonValue) + '</td>' +
+          '<td class="num">' + tgtPct(t.pct) + '</td></tr>';
+      }).join('') +
+      unplanned.map(function (t) {
+        return '<tr><td>' + U.esc(t.name) + ' <span class="tag">not in the plan</span></td>' +
+          '<td class="num"><span class="muted">—</span></td>' +
+          '<td class="num">' + U.count(t.wonCount) + '</td>' +
+          '<td class="num"><span class="muted">—</span></td>' +
+          '<td class="num">' + U.money(t.wonValue) + '</td>' +
+          '<td class="num"><span class="muted">—</span></td></tr>';
+      }).join('') +
+      '</tbody><tfoot><tr><td class="strong">Whole team</td>' +
+        '<td class="num strong">' + U.count(tot.targetCount) + '</td>' +
+        '<td class="num strong">' + U.count(tot.wonCount) + '</td>' +
+        '<td class="num strong">' + U.money(tot.targetValue) + '</td>' +
+        '<td class="num strong">' + U.money(tot.wonValue) + '</td>' +
+        '<td class="num strong">' + tgtPct(tot.pct) + '</td>' +
+      '</tr></tfoot></table></div>';
+  }
+
+  function tgtPct(pct) {
+    if (pct == null) return '<span class="muted">—</span>';
+    var cls = pct >= 100 ? '' : pct < 50 ? 'tag-red' : 'tag-warm';
+    return '<span class="tag ' + cls + '">' + Math.round(pct) + '%</span>';
+  }
+
+  /* One person's plan, product by product. */
+  function targetModal(ownerKey) {
+    var t = M.productTargets(ownerKey, F.apply);
+    var u = RB.store.users().filter(function (x) {
+      return x.ownerKey && x.ownerKey.toUpperCase() === String(ownerKey).toUpperCase();
+    })[0];
+    UI.modal((u ? u.name : ownerKey) + ' — target against won',
+      '<div class="table-wrap"><table class="data"><thead><tr>' +
+        '<th>Product</th><th class="num">Target</th><th class="num">Won</th>' +
+        '<th class="num">Target value</th><th class="num">Won value</th>' +
+        '<th class="num">Achieved</th></tr></thead><tbody>' +
+      t.rows.map(function (r) {
+        return '<tr><td>' + U.esc(r.label) +
+            (r.oneTime ? ' <span class="tag">one-time</span>' : '') + '</td>' +
+          '<td class="num">' + (r.targetCount || '<span class="muted">—</span>') + '</td>' +
+          '<td class="num">' + (r.wonCount || '<span class="muted">—</span>') + '</td>' +
+          '<td class="num">' + (r.targetValue ? U.money(r.targetValue) : '<span class="muted">—</span>') + '</td>' +
+          '<td class="num">' + (r.wonValue ? U.money(r.wonValue) : '<span class="muted">—</span>') + '</td>' +
+          '<td class="num">' + tgtPct(r.pct) + '</td></tr>';
+      }).join('') +
+      '</tbody></table></div>' +
+      '<div class="modal-actions"><button class="btn btn-primary" data-close="1">Close</button></div>',
+      { wide: true });
+  }
+
   function slice() {
     return { vs: F.apply(M.views()), range: F.range(),
              schools: F.applySchools(RB.store.schools()) };
@@ -328,6 +412,8 @@ RB.ceo = (function () {
       'Who is selling, what they did with their day, and whether business moved because of it.') +
       (att.length ? attentionStrip(att) : '') +
 
+      teamTargets() +
+
       '<div class="section-title">Performance</div>' +
       '<div class="tabs">' + Object.keys(dims).map(function (k) {
         return '<button type="button" data-dim="' + k + '" aria-pressed="' + (k === perfDim) + '">' +
@@ -399,6 +485,9 @@ RB.ceo = (function () {
     });
     var strip = host.querySelector('#att-strip');
     if (strip) strip.addEventListener('click', function () { UI.drill('Needs Action', att.map(function (i) { return i.v; })); });
+    host.querySelectorAll('[data-target-owner]').forEach(function (tr) {
+      tr.addEventListener('click', function () { targetModal(tr.getAttribute('data-target-owner')); });
+    });
     host.querySelectorAll('.viz [data-key]').forEach(function (g) {
       g.addEventListener('click', function () {
         var grp = groups.filter(function (x) { return x.key === g.getAttribute('data-key'); })[0];
