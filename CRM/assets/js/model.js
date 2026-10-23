@@ -16,8 +16,27 @@ RB.model = (function () {
   /* Every list here is a dropdown in the UI. Free text exists only for school
    * name, contact name, blocker detail and notes. */
 
+  /* The financial year a sale is booked into. A bagless activity or a
+   * workshop lands almost at once; a lab installed next session belongs to the
+   * year after. The salesperson says which, because only they know. */
+  function salesYears(n) {
+    var now = U.today();
+    // India's year runs April to March, so Jan-Mar still belongs to the year
+    // that opened last April.
+    var start = now.getMonth() >= 3 ? now.getFullYear() : now.getFullYear() - 1;
+    var out = [];
+    for (var i = 0; i < (n || 3); i++) {
+      var y = start + i;
+      out.push(String(y).slice(2) + '-' + String(y + 1).slice(2));
+    }
+    return out;
+  }
+  function currentSalesYear() { return salesYears(1)[0]; }
+
   var V = {
     connectKind: ['New Connect', 'Reconnect'],
+
+    salesYear: salesYears(3),
 
     board: ['CBSE', 'ICSE', 'SSC', 'CBSE-ICSE', 'Cambridge International', 'IB', 'CISCE', 'NIOS'],
 
@@ -126,6 +145,20 @@ RB.model = (function () {
   };
   function stageOf(name) { return STAGE_ALIAS[name] || name || null; }
 
+  /* The products were renamed. Deals already on the books keep whatever they
+   * were tagged with, so this maps the old name to the new one as the data
+   * loads — the same trick STAGE_ALIAS plays for stages. Nothing is rewritten
+   * on the server until a deal is next saved, so it is reversible: take an
+   * entry out and those deals read as they did before. */
+  var OFFERING_ALIAS = {
+    'STEM Lab': 'Composite Skill Labs + Kits Curriculum',
+    'Advanced Lab': 'Advance Composite Skill Lab + Curriculum',
+    'Kit Class': 'RBX Kits + Curriculum'
+    // 'Bagless' stays Bagless.
+    // 'Advanced Lab Pro' is deliberately absent — see the note to Parth.
+  };
+  function offeringOf(name) { return OFFERING_ALIAS[name] || name || null; }
+
   /* Only used to pre-select the stage picker from the response, so the common
    * case is one tap. The rep's choice always wins and is what gets stored. */
   var RESPONSE_STAGE = {
@@ -196,11 +229,12 @@ RB.model = (function () {
           : quoted != null ? quoted
             : opp.initialPotential;
 
-    var probability = null, closureAt = null, remarks = null;
+    var probability = null, closureAt = null, remarks = null, salesYear = null;
     cs.forEach(function (c) {
       if (c.probability != null) probability = c.probability;
       if (c.expectedClosure) closureAt = c.expectedClosure;
       if (c.remarks) remarks = c.remarks;
+      if (c.salesYear) salesYear = c.salesYear;
     });
 
     var nextAction = null, nextAt = null;
@@ -220,6 +254,10 @@ RB.model = (function () {
       expected: expected, current: current,
       probability: probability != null ? probability : opp.probability,
       expectedClosure: closureAt || opp.expectedClosure,
+      // Which year this sale is booked into. Null on deals logged before the
+      // field existed; the dashboards show those as "year not set" rather
+      // than guessing one.
+      salesYear: salesYear || opp.salesYear || null,
       remarks: remarks,
       newConnects: cs.filter(function (c) { return c.kind === 'New'; }).length,
       reconnects: cs.filter(function (c) { return c.kind === 'Reconnect'; }).length,
@@ -670,11 +708,14 @@ RB.model = (function () {
 
   /** The unit price the plan values a product at - the rate card, so a price
    *  change moves the target with it. */
+  /* The plan values a deal at the floor price, which is the number the sheet's
+   * own target values are built from — not MRP, which is only the opening
+   * pitch and is not what anyone commits to. */
   function unitPrice(offering) {
     var row = prices()[offering];
     if (row && row.price != null) return row.price;
     var c = catalogueRow(offering);
-    return c && c.price != null ? c.price : 0;
+    return c && c.sp != null ? c.sp : 0;
   }
 
   /* Target against actual, per product, for one salesperson.
@@ -683,10 +724,15 @@ RB.model = (function () {
    * and counting a proposal towards it would report a year that has not
    * happened. `filter` is the dashboard's filter, so the figure follows
    * whatever the page is showing. */
-  function productTargets(ownerKey, filter) {
+  function productTargets(ownerKey, filter, year) {
     var plan = TARGETS[String(ownerKey || '').toUpperCase()] || {};
     var won = (filter ? filter(views()) : views()).filter(function (v) {
-      return v.owner === ownerKey && v.status === 'Won';
+      if (v.owner !== ownerKey || v.status !== 'Won') return false;
+      // A sale counts towards the year the salesperson booked it into, not
+      // the year it was signed: a lab sold now for next session belongs to
+      // next session. Deals logged before the field existed have no year and
+      // are counted separately rather than dropped or guessed at.
+      return !year || v.salesYear === year;
     });
     var rows = CATALOGUE.map(function (c) {
       var n = plan[c.key] || 0;
@@ -726,14 +772,21 @@ RB.model = (function () {
     };
   }
 
+  /* Deals won with no sales year on them — logged before the field existed,
+   * so they belong to no year's achievement until someone says which. */
+  function unattributed(filter) {
+    return (filter ? filter(views()) : views())
+      .filter(function (v) { return v.status === 'Won' && !v.salesYear; });
+  }
+
   /* Every salesperson in the plan, plus anyone selling who is not in it. */
-  function allTargets(filter) {
+  function allTargets(filter, year) {
     var keys = targetOwners().slice();
     RB.store.users().forEach(function (u) {
       if (u.ownerKey && keys.indexOf(u.ownerKey.toUpperCase()) === -1) keys.push(u.ownerKey);
     });
     return keys.map(function (k) {
-      var t = productTargets(k, filter);
+      var t = productTargets(k, filter, year);
       var u = RB.store.users().filter(function (x) {
         return x.ownerKey && x.ownerKey.toUpperCase() === k.toUpperCase();
       })[0];
@@ -923,26 +976,53 @@ RB.model = (function () {
    *
    * These are defaults, not a lock. Anything Parth types into Settings
    * overrides the row; clearing it falls back to here. */
+  /* Robobox Kits are sold by standard, not by school: a school buys for the
+   * years it wants. The kit is the same across Sr KG to 2nd, so those share a
+   * price, and so on up. `students` is the sheet's own illustrative split,
+   * which is what makes the plan's unit value add up; a real quote uses the
+   * counts the salesperson enters.
+   *
+   * MRP is the opening pitch. SP is the floor — the minimum operating price,
+   * below which the team may not sell. */
+  var KIT_BANDS = [
+    { key: 'srkg-2',  label: 'Sr KG, 1st, 2nd', mrp: 1999, sp: 1199.4, students: 80 },
+    { key: '3-5',     label: '3rd, 4th, 5th',   mrp: 2999, sp: 1799.4, students: 80 },
+    { key: '6-8',     label: '6th, 7th, 8th',   mrp: 3999, sp: 1999.5, students: 40 },
+    { key: '9-10',    label: '9th & 10th',      mrp: 4999, sp: 2499.5, students: 40 }
+  ];
+
+  /* The sheet's illustrative split, added up. This is the unit the plan values
+   * a Robobox Kits sale at. */
+  var KIT_TOTAL = KIT_BANDS.reduce(function (t, b) {
+    t.mrp += b.mrp * b.students;
+    t.sp += b.sp * b.students;
+    return t;
+  }, { mrp: 0, sp: 0 });
+
   var CATALOGUE = [
     { key: 'Innovation Stem Lab + Curriculum', label: 'Innovation Stem Lab + Curriculum',
-      price: 1511738.1196, base: 700,
+      mrp: 1511738.1196, sp: 1511738.1196, base: 700,
       includes: 'STEM Lab + 2 Teachers + Text book / Exam' },
     { key: 'Advance Composite Skill Lab + Curriculum', label: 'Advance Composite Skill Lab + Curriculum',
-      price: 2002527, base: 700,
+      mrp: 2002527, sp: 2002527, base: 700,
       includes: 'Composite Skill Lab + 2 Teachers + Text book / Exam' },
     { key: 'RBX Kits + Curriculum', label: 'RBX Kits + Curriculum',
-      price: 2294610, base: 700,
+      mrp: 2294610, sp: 2294610, base: 700,
       includes: 'Kits + 2 Teachers + Text book / Exam' },
     { key: 'Composite Skill Labs + Kits Curriculum', label: 'Composite Skill Labs + Kits Curriculum',
-      price: 2977137, base: 700,
+      mrp: 2977137, sp: 2977137, base: 700,
       includes: 'Composite Skill Lab + Kits + 2 Teachers' },
-    // One-time sales: a fixed price, not a per-student rate.
     { key: 'Composite Skill Lab (One Time Sale)', label: 'Composite Skill Lab (One Time Sale)',
-      price: 982527, base: null, oneTime: true, mrp: 1403610,
-      includes: 'Selling price; MRP ' + '\u20b9' + '14,03,610' },
+      mrp: 1403610, sp: 982527, base: null, oneTime: true,
+      includes: 'One-time sale' },
     { key: 'Robobox Kits', label: 'Robobox Kits',
-      price: 419864, base: null, oneTime: true,
-      includes: 'One-time sale only — offered to schools under 300 students' }
+      // Both totals are the bands added up at the sheet's own split, never
+      // typed in: a figure copied by hand is a figure that drifts.
+      mrp: KIT_TOTAL.mrp, sp: KIT_TOTAL.sp, base: null, oneTime: true, bands: KIT_BANDS,
+      includes: 'One-time sale — priced per standard band, not per school' },
+    { key: 'Bagless', label: 'Bagless Skills', activities: [
+        'Hydroponics', 'Planetarium', 'Bank in School', 'Pottery', 'Animal Bonding', 'Industry 4.0'
+      ] }
   ];
 
   /* Every priceable line: the four labs plus one row per bagless activity,
@@ -970,8 +1050,8 @@ RB.model = (function () {
         id: c.key, offering: c.key, label: c.label,
         // What the costing sheet says, shown in Settings until Parth types
         // something else over it.
-        defaultPrice: c.price, defaultBase: c.base,
-        oneTime: !!c.oneTime, includes: c.includes || null
+        defaultPrice: c.sp, defaultMrp: c.mrp, defaultBase: c.base,
+        oneTime: !!c.oneTime, bands: c.bands || null, includes: c.includes || null
       });
       activities().forEach(function (a) {
         lines.push({
@@ -1003,10 +1083,13 @@ RB.model = (function () {
 
   function prices() { return cfg.pricing || (cfg.pricing = {}); }
 
-  function setPrice(id, price, baseStudents) {
+  /* `price` is the floor — the minimum operating price. `mrp` is the opening
+   * pitch. Clearing all three drops the override and the catalogue's own
+   * figures take over again. */
+  function setPrice(id, price, baseStudents, mrp) {
     var p = prices();
-    if (price == null && baseStudents == null) delete p[id];
-    else p[id] = { price: price, base: baseStudents };
+    if (price == null && baseStudents == null && mrp == null) delete p[id];
+    else p[id] = { price: price, base: baseStudents, mrp: mrp };
     setConfig({ pricing: p });
   }
 
@@ -1020,28 +1103,82 @@ RB.model = (function () {
     return CATALOGUE.filter(function (c) { return c.key === id; })[0] || null;
   }
 
-  function priceFor(offering, activity, students) {
+  /* What one deal is worth.
+   *
+   * Two numbers, not one. MRP is the opening pitch; SP is the minimum
+   * operating price, the floor the team may not sell below. Both pro-rate the
+   * same way, so a half-size school gets half of each.
+   *
+   * Returns null - never a guess - when the slab is unpriced, or when a
+   * per-student product meets a school whose roll nobody has recorded.
+   *
+   * `opts.bands` is the per-standard student split for Robobox Kits, where
+   * the price follows the standards the school actually buys for.
+   */
+  function priceFor(offering, activity, students, opts) {
     var id = activity ? offering + ' · ' + activity : offering;
-    var row = prices()[id];
-    if (!row || row.price == null) {
-      var c = catalogueRow(id);
-      if (c && c.price != null) row = { price: c.price, base: c.base };
+    var c = catalogueRow(id);
+    var stored = prices()[id];
+
+    if (c && c.bands) return kitPrice(c, (opts && opts.bands) || null);
+
+    var mrp = stored && stored.mrp != null ? stored.mrp : (c ? c.mrp : null);
+    var sp = stored && stored.price != null ? stored.price : (c ? c.sp : null);
+    var base = stored && stored.base != null ? stored.base : (c ? c.base : null);
+    if (sp == null && mrp == null) return null;
+    if (sp == null) sp = mrp;
+    if (mrp == null) mrp = sp;
+
+    if (!base) {
+      return {
+        value: sp, mrp: mrp, sp: sp, price: sp, base: null, students: students,
+        oneTime: !!(c && c.oneTime),
+        note: 'flat rate — not priced per student'
+      };
     }
-    if (!row || !row.price) return null;
-    var base = row.base;
-    if (!base) return {
-      value: row.price, price: row.price, base: null, students: students,
-      note: 'flat rate — no base student count set'
-    };
-    if (!students) return {
-      value: null, price: row.price, base: base, students: null,
-      note: 'student count not recorded for this school'
-    };
+    if (!students) {
+      return {
+        value: null, mrp: null, sp: null, price: sp, base: base, students: null,
+        note: 'student count not recorded for this school'
+      };
+    }
+    var factor = students / base;
     return {
-      value: row.price * (students / base), price: row.price, base: base, students: students,
-      note: U.money(row.price) + ' per ' + U.count(base) + ' students, pro rata on ' +
-        U.count(students)
+      value: sp * factor, mrp: mrp * factor, sp: sp * factor,
+      price: sp, base: base, students: students,
+      note: U.money(sp) + ' per ' + U.count(base) + ' students, pro rata on ' + U.count(students)
     };
+  }
+
+  /* Robobox Kits. Not every school buys for every year, so the price is the
+   * sum over the standard bands they do buy, at that band's rate.
+   *
+   * With no counts entered it falls back to the sheet's own illustrative
+   * split, which is what makes the plan's unit value add up. */
+  function kitPrice(c, bands) {
+    var counts = bands || null;
+    var mrp = 0, sp = 0, heads = 0, lines = [];
+    c.bands.forEach(function (b) {
+      var n = counts ? Number(counts[b.key] || 0) : b.students;
+      if (!n) return;
+      heads += n;
+      mrp += b.mrp * n;
+      sp += b.sp * n;
+      lines.push({ band: b, students: n, mrp: b.mrp * n, sp: b.sp * n });
+    });
+    return {
+      value: sp, mrp: mrp, sp: sp, price: sp, base: null, students: heads,
+      oneTime: true, bands: lines, byBand: true,
+      note: heads
+        ? U.count(heads) + ' students across ' + lines.length + ' band' + (lines.length === 1 ? '' : 's')
+        : 'no standards chosen yet'
+    };
+  }
+
+  /* The floor, for one deal. Nothing may be sold below it. */
+  function floorFor(offering, activity, students, opts) {
+    var q = priceFor(offering, activity, students, opts);
+    return q && q.sp != null ? q.sp : null;
   }
 
   /* List-price value of a set of opportunities, and how much of it could not
@@ -1587,7 +1724,9 @@ RB.model = (function () {
   }
 
   return {
-    V: V, STAGES: STAGES, RANK: RANK, CLOSED: CLOSED, suggestStage: suggestStage, DIMENSIONS: DIMENSIONS,
+    V: V, STAGES: STAGES, KIT_BANDS: KIT_BANDS,
+    salesYears: salesYears, currentSalesYear: currentSalesYear,
+    OFFERING_ALIAS: OFFERING_ALIAS, offeringOf: offeringOf, RANK: RANK, CLOSED: CLOSED, suggestStage: suggestStage, DIMENSIONS: DIMENSIONS,
     connectsFor: connectsFor, view: view, views: views, invalidate: invalidate,
     tasks: tasks, calendar: calendar, scorecard: scorecard, RANGES: RANGES,
     funnel: funnel, commercialFunnel: commercialFunnel, groupBy: groupBy, rollup: rollup,
@@ -1595,12 +1734,12 @@ RB.model = (function () {
     QUAL: QUAL, FIT: FIT, config: config, setConfig: setConfig, percentile: percentile,
     avgLabValue: avgLabValue, highValue: highValue, qualificationGap: qualificationGap,
     CATALOGUE: CATALOGUE, priceLines: priceLines, activities: activities, setActivities: setActivities, prices: prices, setPrice: setPrice,
-    priceFor: priceFor, listValue: listValue,
+    priceFor: priceFor, floorFor: floorFor, listValue: listValue,
     business: business, stageBoard: stageBoard, performance: performance, advancedIn: advancedIn,
     journey: journey, health: health, stageOf: stageOf, STAGE_ALIAS: STAGE_ALIAS,
     PERFORMANCE: PERFORMANCE, performanceOf: performanceOf, topSteps: topSteps,
     TARGETS: TARGETS, targetOwners: targetOwners, productTargets: productTargets,
-    allTargets: allTargets, unitPrice: unitPrice,
+    allTargets: allTargets, unitPrice: unitPrice, unattributed: unattributed,
     blockerRisk: blockerRisk, needsAttention: needsAttention, competitors: competitors,
     leadSources: leadSources, segments: segments, salesSpeed: salesSpeed,
     winningProfile: winningProfile, fitModel: fitModel, lookalikes: lookalikes,

@@ -45,7 +45,21 @@ RB.store = (function () {
       state = (stored && stored.schools && stored.version === 2) ? stored : {
         version: 2, meta: { source: 'MySQL Database' }, users: [], schools: [], contacts: [], opportunities: [], connects: []
       };
+      renameOfferings();
       return state;
+    });
+  }
+
+  /* The products were renamed, and deals on the books still carry the old
+   * names. Mapping them here, once, as the data arrives means every screen,
+   * every roll-up and every export sees the new name without any of them
+   * knowing a rename happened. The server keeps the old value until that deal
+   * is next saved, so nothing is rewritten behind anyone's back.
+   * The map itself is OFFERING_ALIAS in model.js. */
+  function renameOfferings() {
+    state.opportunities.forEach(function (o) {
+      var to = RB.model.offeringOf(o.offering);
+      if (to !== o.offering) { o.renamedFrom = o.offering; o.offering = to; }
     });
   }
 
@@ -162,7 +176,7 @@ RB.store = (function () {
     var o = Object.assign({
       id: U.uid('OPP'), schoolId: null, offering: null, variant: null, ownerKey: null,
       coOwners: [], initialPotential: null, currentNeed: null, decisionMaker: null,
-      expectedClosure: null, probability: null, stage: null, status: 'Open',
+      expectedClosure: null, probability: null, stage: null, salesYear: null, status: 'Open',
       closedValue: null, lossReason: null, holdReason: null, closedAt: null,
       origin: 'app', createdAt: U.iso(U.today())
     }, fields);
@@ -204,6 +218,7 @@ RB.store = (function () {
     } else if (opp && c.stage && !RB.model.CLOSED[c.stage]) {
       opp.status = 'Open'; opp.closedAt = null;
     }
+    if (opp && c.salesYear) opp.salesYear = c.salesYear;
     if (opp && c.expectedClosure) opp.expectedClosure = c.expectedClosure;
     if (opp && c.probability != null) opp.probability = c.probability;
 

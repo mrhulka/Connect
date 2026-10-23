@@ -212,6 +212,9 @@ RB.views = (function () {
       '<div class="section-title">My Actions<span class="st-sub">the 5 that matter most</span></div>' +
       (steps.length ? taskList(steps) : '<div class="empty">Nothing outstanding.</div>');
     bindRange(host, function (r) { scoreRange = r; myScorecard(host); });
+    host.querySelectorAll('[data-year]').forEach(function (b) {
+      b.addEventListener('click', function () { targetYear = b.getAttribute('data-year'); myScorecard(host); });
+    });
     // Everyone can take their own book away as a workbook, not just the CEO.
     host.querySelector('#x-me').addEventListener('click', function () {
       var mine = M.views().filter(function (v) { return v.owner === key; });
@@ -224,14 +227,30 @@ RB.views = (function () {
   /* The year's plan, product by product, against what has actually been won.
    * Counts first because that is how the plan is written - "six Innovation
    * Stem Labs" - with the rupee value beside it. */
+  var targetYear = null;   // set on first render, then whatever is picked
+
+  function yearBar(current) {
+    return '<div class="seg">' + M.V.salesYear.map(function (y) {
+      return '<button type="button" data-year="' + U.esc(y) + '" aria-pressed="' +
+        (y === current) + '">' + U.esc(y) + '</button>';
+    }).join('') + '</div>';
+  }
+
   function targetTable(ownerKey) {
-    var t = M.productTargets(ownerKey, F.apply);
+    if (!targetYear) targetYear = M.currentSalesYear();
+    var t = M.productTargets(ownerKey, F.apply, targetYear);
+    var noYear = M.unattributed(F.apply).filter(function (v) { return v.owner === ownerKey; });
     if (!t.inPlan) {
       return '<div class="section-title">My targets</div>' +
         '<div class="empty">No target set for ' + U.esc(ownerKey) + ' in this year\'s plan.</div>';
     }
     return '<div class="section-title">My targets' +
-        '<span class="st-sub">the year\'s plan, against deals won</span></div>' +
+        '<span class="st-sub">the plan for ' + U.esc(targetYear) + ', against deals won</span></div>' +
+      '<div class="filters">' + yearBar(targetYear) + '</div>' +
+      (noYear.length
+        ? '<p class="small muted">' + U.count(noYear.length) + ' won deal' +
+          (noYear.length === 1 ? '' : 's') + ' with no sales year set — not counted in any year.</p>'
+        : '') +
       '<div class="table-wrap"><table class="data"><thead><tr>' +
         '<th>Product</th><th class="num">Target</th><th class="num">Won</th>' +
         '<th class="num">Target value</th><th class="num">Won value</th>' +

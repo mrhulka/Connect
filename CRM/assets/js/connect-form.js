@@ -385,7 +385,14 @@ RB.connectForm = (function () {
         UI.field('Expected closure date', '<input class="input" type="date" name="expectedClosure" value="' +
           U.esc(v && v.expectedClosure ? v.expectedClosure : '') + '">') +
         UI.field('Probability (%)', UI.select('probability', V.probability, v && v.probability != null ? String(v.probability) : null, { placeholder: 'Select' })) +
+        UI.field('Sales year',
+          UI.select('salesYear', V.salesYear,
+                    v && v.salesYear ? v.salesYear : M.currentSalesYear(), { required: true }),
+          'Which year this sale counts towards. A workshop or bagless activity ' +
+          'is usually this year; a lab for next session is the year after.') +
       '</div>' +
+      kitBandFields() +
+      '<p class="field-hint" id="floor-hint"></p>' +
       UI.field('Remarks', '<input class="input" name="remarks" placeholder="Optional">') +
       '</div>' +
 
@@ -484,15 +491,99 @@ RB.connectForm = (function () {
             UI.field('Phone', '<input class="input" type="tel" name="contactPhone">') + '</div>';
         });
 
-        host.querySelector('#f').addEventListener('submit', function (e) {
+        var form = host.querySelector('#f');
+        wireFloor(form);
+        form.addEventListener('submit', function (e) {
           e.preventDefault();
-          submit(UI.values(this));
+          submit(UI.values(this), this);
         });
       });
   }
 
   /* A deal that stops needs one thing: why. Everything else on the form is
    * about a deal that is still moving, so it comes off the screen. */
+  /* Robobox Kits are bought by standard, not by school: the same kit covers
+   * Sr KG to 2nd, another covers 3rd to 5th, and so on. Ask how many students
+   * sit in each band the school is actually buying for, and the price falls
+   * out of that. Only shown for that product. */
+  /* What is being sold, from whichever path got here: the new-school flow
+   * stashes a draft on `d.opportunity`, the existing-school flow carries an
+   * id. Both end up in the same connect form, so both have to be read. */
+  function dealContext() {
+    var opp = d.opportunity ||
+      (d.opportunityId ? RB.store.opportunityById(d.opportunityId) : null) || {};
+    var school = d.schoolId ? RB.store.schoolById(d.schoolId) : null;
+    if (!school && d.school) school = d.school;
+    return {
+      offering: opp.offering || null,
+      variant: opp.variant || null,
+      students: school ? school.students : null
+    };
+  }
+
+  function kitBandFields() {
+    var row = (M.CATALOGUE || []).filter(function (c) { return c.key === dealContext().offering; })[0];
+    if (!row || !row.bands) return '';
+    return '<div id="kit-bands" style="margin-top:6px">' +
+      '<span class="field-label">Students by standard</span>' +
+      '<div class="field-row">' +
+        row.bands.map(function (b) {
+          return UI.field(b.label,
+            '<input class="input" type="number" min="0" step="1" inputmode="numeric" ' +
+            'data-band="' + U.esc(b.key) + '" placeholder="0">',
+            U.money(b.sp) + ' each, floor');
+        }).join('') +
+      '</div></div>';
+  }
+
+  /* Read the band boxes back off the form. */
+  function bandCounts(form) {
+    var out = null;
+    form.querySelectorAll('[data-band]').forEach(function (i) {
+      var n = Number(i.value || 0);
+      if (n > 0) { out = out || {}; out[i.getAttribute('data-band')] = n; }
+    });
+    return out;
+  }
+
+  /* The floor, live, as the deal size is typed. The team may pitch at MRP and
+   * settle anywhere down to this, and no lower. */
+  function wireFloor(form) {
+    var hint = form.querySelector('#floor-hint');
+    if (!hint) return;
+    var box = form.querySelector('[name="expectedValue"]');
+
+    function quote() {
+      var c = dealContext();
+      if (!c.offering) return null;
+      return M.priceFor(c.offering, c.variant, c.students, { bands: bandCounts(form) });
+    }
+
+    function show() {
+      var q = quote();
+      if (!q || q.sp == null) { hint.textContent = ''; hint.classList.remove('is-bad'); return; }
+      var floor = q.sp;
+      var typed = Number(box && box.value || 0);
+      var under = typed > 0 && typed < floor - 0.5;
+      hint.innerHTML = 'Pitch ' + U.esc(U.money(q.mrp)) + ' · floor ' + U.esc(U.money(floor)) +
+        (under ? ' — <strong>below the minimum operating price</strong>' : '');
+      hint.style.color = under ? 'var(--red)' : '';
+      form.dataset.floor = String(floor);
+    }
+
+    show();
+    if (box) box.addEventListener('input', show);
+    // For kits the bands ARE the deal size, so the box follows them. Typing
+    // over it afterwards still works - until the bands change again.
+    form.querySelectorAll('[data-band]').forEach(function (i) {
+      i.addEventListener('input', function () {
+        var q = quote();
+        if (box && q && q.byBand) box.value = q.sp ? Math.round(q.sp) : '';
+        show();
+      });
+    });
+  }
+
   function closeFields(stage) {
     return '<div class="cx-step"><h3>' +
       (stage === 'On Hold' ? 'Why is it on hold?' : 'Why was it lost?') + '</h3>' +
@@ -501,7 +592,7 @@ RB.connectForm = (function () {
       '<div id="reason-note" hidden></div></div>';
   }
 
-  function submit(f) {
+  function submit(f, form) {
     if (!f.mode) return UI.toast('Pick the type of connect.');
     if (!f.response) return UI.toast('Record the response.');
     if (!f.stage) return UI.toast('Set the pipeline stage.');
@@ -532,6 +623,15 @@ RB.connectForm = (function () {
       }).id;
     }
 
+    // The floor is a commercial rule, not a suggestion: a deal below the
+    // minimum operating price does not get saved.
+    var floor = Number((form && form.dataset.floor) || 0);
+    var asked = f.expectedValue ? Number(f.expectedValue) : 0;
+    if (floor && asked && asked < floor - 0.5) {
+      UI.toast('That is below the minimum operating price of ' + U.money(floor) + '.');
+      return;
+    }
+
     var closed = M.CLOSED[f.stage];
     RB.store.logConnect({
       schoolId: d.schoolId, opportunityId: d.opportunityId, by: RB.auth.user().id,
@@ -542,6 +642,8 @@ RB.connectForm = (function () {
       expectedValue: f.expectedValue ? Number(f.expectedValue) : null,
       probability: f.probability ? Number(f.probability) : null,
       expectedClosure: f.expectedClosure || null,
+      salesYear: f.salesYear || null,
+      kitBands: (form && bandCounts(form)) || null,
       remarks: stopped ? (f.lossReasonNote || null) : (f.remarks || null),
       nextAction: stopped ? 'No Further Action' : f.nextAction,
       nextActionOwner: stopped ? null : f.nextActionOwner,

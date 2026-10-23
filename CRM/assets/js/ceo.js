@@ -70,8 +70,12 @@ RB.ceo = (function () {
    * actually won. One row per salesperson, the products behind each row a
    * click away, so the page answers "are we on track" before it answers
    * "on what". */
+  var targetYear = null;
+
   function teamTargets() {
-    var all = M.allTargets(F.apply);
+    if (!targetYear) targetYear = M.currentSalesYear();
+    var all = M.allTargets(F.apply, targetYear);
+    var noYear = M.unattributed(F.apply);
     var inPlan = all.filter(function (t) { return t.inPlan; });
     if (!inPlan.length) return '';
     var tot = {
@@ -87,7 +91,16 @@ RB.ceo = (function () {
     var unplanned = all.filter(function (t) { return !t.inPlan && t.wonCount; });
 
     return '<div class="section-title">Targets' +
-        '<span class="st-sub">the year\'s plan against deals won</span></div>' +
+        '<span class="st-sub">the plan for ' + U.esc(targetYear) + ' against deals won</span></div>' +
+      '<div class="filters"><div class="seg">' + M.V.salesYear.map(function (y) {
+        return '<button type="button" data-tyear="' + U.esc(y) + '" aria-pressed="' +
+          (y === targetYear) + '">' + U.esc(y) + '</button>';
+      }).join('') + '</div>' +
+      (noYear.length
+        ? '<span class="small muted">' + U.count(noYear.length) +
+          ' won deal' + (noYear.length === 1 ? '' : 's') +
+          ' with no sales year set — counted in no year.</span>'
+        : '') + '</div>' +
       '<div class="table-wrap"><table class="data"><thead><tr>' +
         '<th>Salesperson</th><th class="num">Target</th><th class="num">Won</th>' +
         '<th class="num">Target value</th><th class="num">Won value</th>' +
@@ -127,7 +140,7 @@ RB.ceo = (function () {
 
   /* One person's plan, product by product. */
   function targetModal(ownerKey) {
-    var t = M.productTargets(ownerKey, F.apply);
+    var t = M.productTargets(ownerKey, F.apply, targetYear);
     var u = RB.store.users().filter(function (x) {
       return x.ownerKey && x.ownerKey.toUpperCase() === String(ownerKey).toUpperCase();
     })[0];
@@ -487,6 +500,9 @@ RB.ceo = (function () {
     if (strip) strip.addEventListener('click', function () { UI.drill('Needs Action', att.map(function (i) { return i.v; })); });
     host.querySelectorAll('[data-target-owner]').forEach(function (tr) {
       tr.addEventListener('click', function () { targetModal(tr.getAttribute('data-target-owner')); });
+    });
+    host.querySelectorAll('[data-tyear]').forEach(function (b) {
+      b.addEventListener('click', function () { targetYear = b.getAttribute('data-tyear'); sales(host); });
     });
     host.querySelectorAll('.viz [data-key]').forEach(function (g) {
       g.addEventListener('click', function () {

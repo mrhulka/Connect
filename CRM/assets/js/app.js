@@ -215,6 +215,7 @@ RB.app = (function () {
       var stored = p[l.id] || {};
       var v = {
         price: stored.price != null ? stored.price : l.defaultPrice,
+        mrp: stored.mrp != null ? stored.mrp : l.defaultMrp,
         base: stored.base != null ? stored.base : l.defaultBase
       };
       rows += '<div class="price-row" data-price="' + U.esc(l.id) + '">' +
@@ -224,8 +225,10 @@ RB.app = (function () {
           (l.removable ? '<button type="button" class="price-drop" data-drop-activity="' +
             U.esc(l.activity) + '" title="Remove ' + U.esc(l.activity) + '" ' +
             'aria-label="Remove ' + U.esc(l.activity) + '">&times;</button>' : '') + '</span>' +
+        '<input class="input" type="number" min="0" step="any" inputmode="decimal" data-f="mrp" ' +
+          'placeholder="MRP ₹" value="' + U.esc(v.mrp != null ? v.mrp : '') + '">' +
         '<input class="input" type="number" min="0" step="any" inputmode="decimal" data-f="price" ' +
-          'placeholder="Price ₹" value="' + U.esc(v.price != null ? v.price : '') + '">' +
+          'placeholder="Min price ₹" value="' + U.esc(v.price != null ? v.price : '') + '">' +
         '<input class="input" type="number" min="1" step="1" inputmode="numeric" data-f="base" ' +
           'placeholder="Base students" value="' + U.esc(v.base != null ? v.base : '') + '">' +
         '<span class="price-out">' + U.esc(priceNote(v)) + '</span>' +
@@ -233,9 +236,10 @@ RB.app = (function () {
     });
 
     return UI.card('Rate card',
-      'Price × (school students ÷ base students). Leave a row blank and it simply will not auto-calculate.',
-      '<div class="price-head"><span>Offering</span><span>Price (₹)</span>' +
-      '<span>Base students</span><span></span></div>' + rows +
+      'MRP is the opening pitch. Min price is the floor — the sales team cannot go below it. ' +
+      'Both scale by (school students ÷ base students); a one-time sale has no base and is flat.',
+      '<div class="price-head"><span>Offering</span><span>MRP (₹)</span>' +
+      '<span>Min price (₹)</span><span>Base students</span><span></span></div>' + rows +
       // Only shown while some product actually has sub-activities; the current
       // catalogue has none, so this stays out of the way.
       (M.activities().length || M.priceLines().some(function (l) { return l.removable; })
@@ -250,11 +254,16 @@ RB.app = (function () {
       'The bagless list is yours to write — add or remove activities above.</p>');
   }
 
+  /* MRP is what the team opens at; the min price is the floor they may not go
+   * below. Showing both is the point — one number alone hides which is which. */
   function priceNote(v) {
-    if (!v.price) return 'not priced';
-    if (!v.base) return U.money(v.price) + ' flat — one-time sale';
-    return U.money(v.price / v.base) + ' per student · ' + U.money(v.price) +
-           ' per ' + U.count(v.base);
+    if (!v.price && !v.mrp) return 'not priced';
+    var floor = v.price || v.mrp;
+    var pitch = v.mrp || v.price;
+    var gap = pitch > floor ? ' · pitch ' + U.money(pitch) : '';
+    if (!v.base) return 'floor ' + U.money(floor) + gap + ' — flat';
+    return 'floor ' + U.money(floor / v.base) + '/student' + gap +
+           ' · per ' + U.count(v.base);
   }
 
   function bindPricing(host) {
@@ -282,9 +291,9 @@ RB.app = (function () {
             var el = row.querySelector('[data-f="' + f + '"]');
             return el.value === '' ? null : Number(el.value);
           };
-          var price = get('price'), base = get('base');
-          M.setPrice(row.getAttribute('data-price'), price, base);
-          row.querySelector('.price-out').textContent = priceNote({ price: price, base: base });
+          var price = get('price'), base = get('base'), mrp = get('mrp');
+          M.setPrice(row.getAttribute('data-price'), price, base, mrp);
+          row.querySelector('.price-out').textContent = priceNote({ price: price, base: base, mrp: mrp });
           UI.toast('Price saved.');
         });
       });
