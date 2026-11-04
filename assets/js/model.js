@@ -1469,25 +1469,27 @@ RB.model = (function () {
     var today = U.iso(U.today());
     var seen = {}, out = [];
 
-    function push(v, problem, action) {
+    // kind names the rule, so a screen can group and mark them; problem is
+    // the sentence a person reads.
+    function push(v, problem, action, kind) {
       if (seen[v.opp.id]) return;
       seen[v.opp.id] = true;
-      out.push({ v: v, problem: problem, action: action });
+      out.push({ v: v, problem: problem, action: action, kind: kind });
     }
 
     U.sortBy(open, function (v) { return v.current || 0; }, 'desc').forEach(function (v) {
       var value = v.current || 0;
       if (value >= big && v.stageAge != null && v.stageAge > cfg.staleDays) {
-        push(v, 'High value, stuck ' + v.stageAge + ' days', 'Management connect this week');
+        push(v, 'High value, stuck ' + v.stageAge + ' days', 'Management connect this week', 'stuck');
       } else if (v.probability >= 70 && v.nextActionAt && v.nextActionAt.slice(0, 10) < today) {
-        push(v, 'Likely to close, follow-up overdue', 'Call today — ' + (v.nextAction || 'follow up'));
+        push(v, 'Likely to close, follow-up overdue', 'Call today — ' + (v.nextAction || 'follow up'), 'overdue');
       } else if (value >= big && !v.nextAction) {
-        push(v, 'Large deal with no next action', 'Set the next action and a date');
+        push(v, 'Large deal with no next action', 'Set the next action and a date', 'no-next');
       } else if (v.expectedClosure && v.expectedClosure < today) {
-        push(v, 'Closure date passed, still open', 'Re-forecast or close it out');
+        push(v, 'Closure date passed, still open', 'Re-forecast or close it out', 'date-passed');
       } else if (fit && fit.score(v.school).score >= 70 && value >= big &&
         (v.daysSinceConnect == null || v.daysSinceConnect > 21)) {
-        push(v, 'Strategic school gone quiet', 'Reconnect — strong fit profile');
+        push(v, 'Strategic school gone quiet', 'Reconnect — strong fit profile', 'quiet');
       }
     });
     return out;

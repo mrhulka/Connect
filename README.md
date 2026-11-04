@@ -94,15 +94,36 @@ open `index.html` straight off a disk (or add `?demo` to the address):
 
 Take the line out again before deploying.
 
-## Motion and design
+## Design
 
-The visual layer is the last block of `assets/css/app.css` ("Fluid layer").
-It changes how things move, press and layer — no colour token, no brand
-colour, and no workflow. Three small hooks in the JavaScript drive it:
-`UI.closeModal()` and toasts play a short exit before hiding, and
-`RB.app.go()` marks a real page change so the entrance animation plays only
-then, not on every save or filter. All motion is skipped for anyone whose
-system asks for reduced motion.
+`assets/css/app.css` is one design system, mobile first. Colour tokens and the
+brand palette are at the top; nothing else in the file defines a colour of
+its own.
+
+On a phone (980px and narrower) the app runs as an app:
+
+- an app bar with the brand, search and the theme switch;
+- a bottom tab bar (rendered by `tabbar()` in `app.js`) with the three places
+  each role uses most, Log Connect in the middle, and More, which opens the
+  full menu as a sheet;
+- every dialog is a bottom sheet; sheets can be pulled down to close
+  (`UI.dragToDismiss` in `ui.js`);
+- every table turns into a stack of cards. `ui.js` captions each cell from
+  its table's header row automatically, so a new table needs no extra work.
+
+Icons are inline SVG from `UI.icon(name)` in `ui.js`. Headings and large
+numbers use Bricolage Grotesque, loaded with Inter from Google Fonts.
+
+Motion: dialogs and toasts play a short exit before hiding, and a page
+change plays an entrance (`RB.app.go()` marks it), but a save or a filter
+does not. All motion is skipped when the system asks for reduced motion.
+
+## Needs attention
+
+`M.needsAttention()` tags each item with the rule that caught it (`kind`:
+stuck, overdue, no-next, date-passed, quiet). `ceo.js` shows them as cards
+with a breakdown by kind: a grid on Business, a sideways rail on Sales,
+Market and Win. A card opens the school; See all opens the full list.
 
 ## Sign-in
 

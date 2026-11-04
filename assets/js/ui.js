@@ -22,6 +22,91 @@ RB.ui = (function () {
     return setTimeout(function () { el.hidden = true; el.classList.remove(cls); }, LEAVE_MS);
   }
 
+  /* One line-icon set, drawn on a 24px grid with a 2px round stroke, so every
+   * icon in the app has the same weight. Shapes after Lucide (ISC licence). */
+  var ICONS = {
+    day: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M6.3 17.7l-1.4 1.4M19.1 4.9l-1.4 1.4"/>',
+    tasks: '<path d="m3 17 2 2 4-4M3 7l2 2 4-4M13 6h8M13 12h8M13 18h8"/>',
+    calendar: '<rect x="3" y="4" width="18" height="18" rx="3"/><path d="M16 2v4M8 2v4M3 10h18"/>',
+    schools: '<path d="M6 22V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v18Z"/><path d="M6 12H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2M18 9h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-2M10 6h4M10 10h4M10 14h4M10 18h4"/>',
+    scorecard: '<path d="m12 14 4-4"/><path d="M3.3 19a10 10 0 1 1 17.4 0"/>',
+    business: '<rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/>',
+    sales: '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8"/>',
+    market: '<circle cx="12" cy="12" r="10"/><path d="m16.2 7.8-2.1 6.3-6.3 2.1 2.1-6.3z"/>',
+    win: '<path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6M18 9h1.5a2.5 2.5 0 0 0 0-5H18M4 22h16M10 14.7V17c0 .6-.5 1-1 1.2C7.9 18.8 7 20.2 7 22M14 14.7V17c0 .6.5 1 1 1.2 1.1.6 2 2 2 3.8M18 2H6v7a6 6 0 0 0 12 0Z"/>',
+    settings: '<path d="M21 4h-7M10 4H3M21 12h-9M8 12H3M21 20h-5M12 20H3M14 2v4M8 10v4M16 18v4"/>',
+    menu: '<path d="M4 7h16M4 12h16M4 17h16"/>',
+    more: '<circle cx="5" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/>',
+    grid: '<rect x="3" y="3" width="7" height="7" rx="2"/><rect x="14" y="3" width="7" height="7" rx="2"/><rect x="3" y="14" width="7" height="7" rx="2"/><rect x="14" y="14" width="7" height="7" rx="2"/>',
+    search: '<circle cx="11" cy="11" r="7.5"/><path d="m20.5 20.5-4.2-4.2"/>',
+    plus: '<path d="M12 5v14M5 12h14"/>',
+    sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M6.3 17.7l-1.4 1.4M19.1 4.9l-1.4 1.4"/>',
+    moon: '<path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/>',
+    chevron: '<path d="m9 18 6-6-6-6"/>',
+    arrow: '<path d="M5 12h14M13 6l6 6-6 6"/>',
+    logout: '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/>',
+    clock: '<circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>',
+    alert: '<circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/>',
+    flag: '<path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><path d="M4 22v-7"/>',
+    calx: '<rect x="3" y="4" width="18" height="18" rx="3"/><path d="M16 2v4M8 2v4M3 10h18M10 14l4 4M14 14l-4 4"/>',
+    quiet: '<path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/>'
+  };
+  function icon(name) {
+    return '<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" ' +
+      'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + (ICONS[name] || '') + '</svg>';
+  }
+
+  /* Pull a bottom sheet down to dismiss it, on a phone. The sheet follows the
+   * finger 1:1 from where it was grabbed (only from its top strip, so the
+   * content inside still scrolls), resists being pulled up, and on release
+   * either carries on down - when it has gone a quarter of the way, or was
+   * flicked - or springs back. */
+  var GRAB = 64;
+  function dragToDismiss(sheet, close) {
+    var y0 = 0, dy = 0, last = 0, lastT = 0, v = 0, on = false;
+    function phone() { return matchMedia('(max-width: 980px)').matches; }
+    sheet.addEventListener('pointerdown', function (e) {
+      if (!phone() || e.button > 0) return;
+      if (e.clientY - sheet.getBoundingClientRect().top > GRAB) return;
+      if (e.target.closest('button, a, input, select, textarea, summary')) return;
+      on = true; y0 = last = e.clientY; lastT = e.timeStamp; dy = 0; v = 0;
+      sheet.setPointerCapture(e.pointerId);
+      sheet.style.transition = 'none';
+    });
+    sheet.addEventListener('pointermove', function (e) {
+      if (!on) return;
+      dy = e.clientY - y0;
+      var dt = e.timeStamp - lastT;
+      if (dt > 0) v = (e.clientY - last) / dt;   // px per ms, latest sample
+      last = e.clientY; lastT = e.timeStamp;
+      // past the top it gives a little, then less and less
+      var y = dy >= 0 ? dy : -(-dy * 40) / (40 + -dy);
+      sheet.style.transform = 'translateY(' + y + 'px)';
+    });
+    function release() {
+      if (!on) return;
+      on = false;
+      var h = sheet.getBoundingClientRect().height;
+      if (dy > h * 0.25 || (dy > 24 && v > 0.5)) {
+        sheet.style.transition = 'transform 220ms cubic-bezier(.2,0,0,1)';
+        sheet.style.transform = 'translateY(100%)';
+        setTimeout(function () {
+          close();
+          sheet.style.transition = 'none';
+          sheet.style.transform = '';
+          void sheet.offsetHeight;
+          sheet.style.transition = '';
+        }, 220);
+      } else {
+        sheet.style.transition = 'transform 380ms cubic-bezier(.22,1,.36,1)';
+        sheet.style.transform = '';
+        setTimeout(function () { sheet.style.transition = ''; }, 380);
+      }
+    }
+    sheet.addEventListener('pointerup', release);
+    sheet.addEventListener('pointercancel', release);
+  }
+
   function toast(msg, action) {
     var el = document.getElementById('toast');
     clearTimeout(toastTimer);
@@ -54,8 +139,10 @@ RB.ui = (function () {
     if (opts.onMount) opts.onMount(host);
     return host;
   }
-  function closeModal() {
-    modalTimer = leave(document.getElementById('modal-root'), 'is-closing', modalTimer);
+  function closeModal(now) {
+    var root = document.getElementById('modal-root');
+    if (now === true) { clearTimeout(modalTimer); root.hidden = true; root.classList.remove('is-closing'); return; }
+    modalTimer = leave(root, 'is-closing', modalTimer);
   }
 
   /* ONE headline tile, used by every screen. The old `.stat` names are kept as
@@ -314,6 +401,26 @@ RB.ui = (function () {
     return cols;
   }
 
+  /* On a phone a table becomes a stack of cards, each value captioned with its
+   * column name. The captions are read off the header row, so every table -
+   * the shared one and the hand-built ones - gets them without knowing. */
+  function labelTables() {
+    document.querySelectorAll('table.data:not([data-labelled])').forEach(function (t) {
+      var heads = Array.prototype.map.call(t.querySelectorAll('thead th'), function (th) {
+        return th.textContent.replace(/[↑↓]/g, '').trim();
+      });
+      t.querySelectorAll('tbody tr, tfoot tr').forEach(function (tr) {
+        var col = 0;
+        tr.querySelectorAll('td').forEach(function (td) {
+          if (td.colSpan === 1 && heads[col]) td.setAttribute('data-label', heads[col]);
+          col += td.colSpan;
+        });
+      });
+      t.setAttribute('data-labelled', '1');
+    });
+  }
+  new MutationObserver(labelTables).observe(document.body, { childList: true, subtree: true });
+
   /* A drill-down list of opportunities, from any number anywhere. */
   function drill(title, vs) {
     var holder = document.createElement('div');
@@ -335,6 +442,6 @@ RB.ui = (function () {
     head: head, card: card, stageTag: stageTag, interestTag: interestTag,
     select: select, field: field, choice: choice, bindChoices: bindChoices,
     values: values, bindDatePickers: bindDatePickers, table: table, oppColumns: oppColumns, drill: drill,
-    monthGrid: monthGrid, bindMonthGrid: bindMonthGrid
+    monthGrid: monthGrid, bindMonthGrid: bindMonthGrid, icon: icon, dragToDismiss: dragToDismiss
   };
 })();

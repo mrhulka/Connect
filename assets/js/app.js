@@ -8,23 +8,23 @@ RB.app = (function () {
   var current = null;
 
   var ROUTES = {
-    'day':       { label: 'My day',        icon: '◉', group: 'Sell',       render: RB.views.myDay },
-    'tasks':     { label: 'My tasks',      icon: '☑', group: 'Sell',       render: RB.views.myTasks },
-    'calendar':  { label: 'My calendar',   icon: '▦', group: 'Sell',       render: RB.views.myCalendar },
-    'schools':   { label: 'My schools',    icon: '◫', group: 'Sell',       render: RB.views.mySchools },
-    'scorecard': { label: 'My performance', icon: '◑', group: 'Sell',      render: RB.views.myScorecard },
+    'day':       { label: 'My day',        icon: UI.icon('day'), group: 'Sell',       render: RB.views.myDay },
+    'tasks':     { label: 'My tasks',      icon: UI.icon('tasks'), group: 'Sell',       render: RB.views.myTasks },
+    'calendar':  { label: 'My calendar',   icon: UI.icon('calendar'), group: 'Sell',       render: RB.views.myCalendar },
+    'schools':   { label: 'My schools',    icon: UI.icon('schools'), group: 'Sell',       render: RB.views.mySchools },
+    'scorecard': { label: 'My performance', icon: UI.icon('scorecard'), group: 'Sell',      render: RB.views.myScorecard },
 
     /* The command centre: four tabs, one filter bar, one set of formulas.
      * `need` is the permission that opens the route. Sales is the team board -
      * who did what, and how they are tracking - so the Head of Sales has it
      * while the three money-led tabs stay with the CEO and Outsight. */
-    'business':  { label: 'Business',      icon: '◆', group: 'Command centre', need: 'ceoDashboard', render: RB.ceo.business },
-    'sales':     { label: 'Sales',         icon: '⚇', group: 'Command centre', need: 'teamBoard',    render: RB.ceo.sales },
-    'market':    { label: 'Market',        icon: '◈', group: 'Command centre', need: 'ceoDashboard', render: RB.ceo.market },
-    'win':       { label: 'Win',           icon: '★', group: 'Command centre', need: 'ceoDashboard', render: RB.ceo.win },
+    'business':  { label: 'Business',      icon: UI.icon('business'), group: 'Command centre', need: 'ceoDashboard', render: RB.ceo.business },
+    'sales':     { label: 'Sales',         icon: UI.icon('sales'), group: 'Command centre', need: 'teamBoard',    render: RB.ceo.sales },
+    'market':    { label: 'Market',        icon: UI.icon('market'), group: 'Command centre', need: 'ceoDashboard', render: RB.ceo.market },
+    'win':       { label: 'Win',           icon: UI.icon('win'), group: 'Command centre', need: 'ceoDashboard', render: RB.ceo.win },
 
     /* Settings is the CEO's alone: the people, the rate card, the targets. */
-    'settings': { label: 'Settings', icon: '⚙', group: 'Account', render: settings }
+    'settings': { label: 'Settings', icon: UI.icon('settings'), group: 'Account', render: settings }
   };
 
   function allowed(r) {
@@ -66,7 +66,7 @@ RB.app = (function () {
       '<div class="rail-user"><span class="avatar">' + U.esc(U.initials(u.name)) + '</span>' +
       '<span class="rail-user-meta"><strong>' + U.esc(u.name) + '</strong>' +
       '<small>' + U.esc(RB.auth.roleLabel(u.role)) + '</small></span></div>' +
-      '<button class="rail-signout" id="rail-signout">Sign out</button>';
+      '<button class="rail-signout" id="rail-signout">' + UI.icon('logout') + 'Sign out</button>';
 
     host.querySelectorAll('[data-route]').forEach(function (b) {
       b.addEventListener('click', function () {
@@ -75,6 +75,37 @@ RB.app = (function () {
       });
     });
     host.querySelector('#rail-signout').addEventListener('click', signOut);
+    tabbar(badges);
+  }
+
+  /* On a phone the rail becomes a tab bar: the three places this person goes
+   * most, Log Connect raised in the middle, and More for everything else -
+   * which opens the same rail as a sheet. Same routes, same permissions. */
+  function tabbar(badges) {
+    var want = RB.auth.can('ceoDashboard') ? ['business', 'sales', 'schools']
+      : RB.auth.can('teamBoard') ? ['day', 'sales', 'schools'] : ['day', 'tasks', 'schools'];
+    var tabs = want.filter(allowed);
+    var short = { day: 'Today', tasks: 'Tasks', schools: 'Schools', business: 'Business', sales: 'Sales' };
+    function tab(k) {
+      var b = badges[k];
+      return '<button type="button" class="tab" data-tab-route="' + k + '"' +
+        (current === k ? ' aria-current="page"' : '') + '>' + ROUTES[k].icon +
+        '<span>' + U.esc(short[k] || ROUTES[k].label) + '</span>' +
+        (b ? '<i class="tab-dot' + (k === 'day' ? ' alarm' : '') + '">' + U.count(b) + '</i>' : '') + '</button>';
+    }
+    var el = document.getElementById('tabbar');
+    el.innerHTML = tabs.slice(0, 2).map(tab).join('') +
+      '<button type="button" class="tab tab-log" id="tab-log" aria-label="Log Connect">' + UI.icon('plus') + '</button>' +
+      tabs.slice(2).map(tab).join('') +
+      '<button type="button" class="tab" id="tab-more"' + (tabs.indexOf(current) === -1 ? ' aria-current="page"' : '') + '>' +
+        UI.icon('grid') + '<span>More</span></button>';
+    el.querySelectorAll('[data-tab-route]').forEach(function (b) {
+      b.addEventListener('click', function () { go(b.getAttribute('data-tab-route')); });
+    });
+    el.querySelector('#tab-log').addEventListener('click', function () { RB.connectForm.open(); });
+    el.querySelector('#tab-more').addEventListener('click', function () {
+      document.getElementById('shell').classList.add('nav-open');
+    });
   }
 
   /* A page change plays the entrance in app.css; a re-render of the same
@@ -582,6 +613,26 @@ RB.app = (function () {
     });
     document.addEventListener('keydown', function (e) { if (e.key === 'Escape') UI.closeModal(); });
     document.getElementById('fab').addEventListener('click', function () { RB.connectForm.open(); });
+    var topbar = document.querySelector('.topbar'), search = document.getElementById('global-search');
+    function closeSearch() {
+      topbar.classList.remove('searching');
+      search.value = '';
+      search.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+    document.getElementById('search-open').addEventListener('click', function () {
+      topbar.classList.add('searching');
+      search.focus();
+    });
+    document.getElementById('search-cancel').addEventListener('click', closeSearch);
+    search.addEventListener('keydown', function (e) { if (e.key === 'Escape') closeSearch(); });
+    document.getElementById('search-results').addEventListener('click', function () {
+      topbar.classList.remove('searching');
+    });
+    // Both sheets can be pulled down to close on a phone.
+    UI.dragToDismiss(document.getElementById('sidebar'), function () {
+      document.getElementById('shell').classList.remove('nav-open');
+    });
+    UI.dragToDismiss(document.querySelector('#modal-root .modal'), function () { UI.closeModal(true); });
     document.getElementById('top-log').addEventListener('click', function () { RB.connectForm.open(); });
     window.addEventListener('hashchange', function () {
       var h = (location.hash || '').replace('#/', '');

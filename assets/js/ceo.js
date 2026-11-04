@@ -181,37 +181,69 @@ RB.ceo = (function () {
     return n == null ? '—' : n.toFixed(digits === undefined ? 0 : digits) + '%';
   }
 
-  /* Persistent across the dashboard: the handful of opportunities that need a
-   * decision today. Full table on Business, one line everywhere else. */
-  function attentionStrip(items) {
-    if (!items.length) return '';
-    return '<button type="button" class="action-item red" id="att-strip">' +
-      '<span class="action-ico">!</span><span><strong>' + items.length +
-      ' opportunities need attention</strong><small>' +
-      U.esc(U.money(U.sum(items, function (i) { return i.v.current || 0; }))) +
-      ' — ' + U.esc(items[0].problem) + ', and ' + (items.length - 1) + ' more</small></span>' +
-      '<span class="chev">›</span></button>';
+  /* Needs attention: the opportunities that want a decision today, as cards a
+   * person can act on - who, how much, what is wrong, what to do, whose it is.
+   * Above them, how the problems break down by kind, so the shape of the
+   * trouble reads before the detail. Full grid on Business; a compact rail
+   * that scrolls sideways everywhere else. A card opens the school, as the
+   * table row did; "See all" opens the full list, as the old strip did. */
+  var ATT_KIND = {
+    'stuck':       { label: 'Stuck',             icon: 'clock', tone: 'red' },
+    'overdue':     { label: 'Follow-up overdue', icon: 'alert', tone: 'red' },
+    'no-next':     { label: 'No next step',      icon: 'flag',  tone: 'amber' },
+    'date-passed': { label: 'Closure passed',    icon: 'calx',  tone: 'amber' },
+    'quiet':       { label: 'Gone quiet',        icon: 'quiet', tone: 'grey' }
+  };
+  var ATT_ORDER = ['stuck', 'overdue', 'no-next', 'date-passed', 'quiet'];
+
+  function attCard(i, compact) {
+    var v = i.v, k = ATT_KIND[i.kind] || ATT_KIND.stuck;
+    var owner = v.owner || '';
+    return '<button type="button" class="att-card tone-' + k.tone + '"' +
+      (v.school ? ' data-school="' + U.esc(v.school.id) + '"' : '') + '>' +
+      '<span class="att-top"><span class="att-kind">' + UI.icon(k.icon) + U.esc(k.label) + '</span>' +
+        '<span class="att-val">' + U.esc(U.money(v.current)) + '</span></span>' +
+      '<strong class="att-school">' + U.esc(v.school ? v.school.name : '—') + '</strong>' +
+      '<small class="att-sub">' + U.esc([v.school && v.school.region, v.opp.offering].filter(Boolean).join(' · ')) + '</small>' +
+      '<span class="att-problem">' + U.esc(i.problem) + '</span>' +
+      (compact ? '' : '<span class="att-next">' + UI.icon('arrow') + U.esc(i.action) + '</span>') +
+      '<span class="att-foot">' +
+        (owner ? '<span class="att-owner"><span class="avatar">' + U.esc(U.initials(owner)) + '</span>' + U.esc(owner) + '</span>'
+               : '<span class="tag tag-red">Unassigned</span>') +
+        UI.stageTag(v) + '</span>' +
+    '</button>';
   }
 
-  function attentionTable(container, items) {
-    UI.table(container, {
-      rows: items, rowId: function (i) { return i.v.opp.id; }, sortKey: 'value', pageSize: 10,
-      onRowClick: function (id) { RB.views.school(RB.store.opportunityById(id).schoolId); },
-      empty: 'Nothing needs action today.',
-      columns: [
-        { key: 'school', label: 'School', get: function (i) { return i.v.school ? i.v.school.name : ''; },
-          render: function (i) { return '<span class="strong">' + U.esc(i.v.school ? i.v.school.name : '—') + '</span>' +
-            '<div class="small muted">' + U.esc([i.v.school && i.v.school.region, i.v.opp.offering].filter(Boolean).join(' · ')) + '</div>'; } },
-        { key: 'stage', label: 'Stage', get: function (i) { return i.v.stageRank; }, render: function (i) { return UI.stageTag(i.v); } },
-        { key: 'value', label: 'Value', num: true, get: function (i) { return i.v.current || 0; },
-          render: function (i) { return U.money(i.v.current); } },
-        { key: 'problem', label: 'Problem', get: function (i) { return i.problem; },
-          render: function (i) { return '<span class="tag tag-red">' + U.esc(i.problem) + '</span>'; } },
-        { key: 'action', label: 'Next Step', get: function (i) { return i.action; } },
-        { key: 'owner', label: 'Owner', get: function (i) { return i.v.owner || 'Unassigned'; },
-          render: function (i) { return i.v.owner ? U.esc(i.v.owner) : '<span class="tag tag-red">Unassigned</span>'; } }
-      ]
-    });
+  function attentionPanel(items, opts) {
+    if (!items.length) return '';
+    opts = opts || {};
+    var limit = opts.limit || items.length;
+    var counts = {};
+    items.forEach(function (i) { counts[i.kind] = (counts[i.kind] || 0) + 1; });
+    var total = U.sum(items, function (i) { return i.v.current || 0; });
+    return '<section class="att' + (opts.compact ? ' att-compact' : '') + '">' +
+      '<div class="att-head">' +
+        '<span class="att-badge">' + UI.icon('alert') + '</span>' +
+        '<div class="att-title"><h3>' + U.count(items.length) + ' need attention</h3>' +
+          '<small><b>' + U.esc(U.money(total)) + '</b> waiting on a decision</small></div>' +
+        // id kept from the old strip, so the "see all" wiring is unchanged
+        '<button type="button" class="btn btn-sm att-all" id="att-strip">See all' + UI.icon('chevron') + '</button>' +
+      '</div>' +
+      '<div class="att-mix">' + ATT_ORDER.filter(function (k) { return counts[k]; }).map(function (k) {
+        return '<span class="att-chip tone-' + ATT_KIND[k].tone + '">' + UI.icon(ATT_KIND[k].icon) +
+          U.esc(ATT_KIND[k].label) + '<b>' + counts[k] + '</b></span>';
+      }).join('') + '</div>' +
+      '<div class="att-cards">' + items.slice(0, limit).map(function (i) { return attCard(i, opts.compact); }).join('') +
+        (items.length > limit ? '<button type="button" class="att-more" data-att-more="1"><b>+' +
+          (items.length - limit) + '</b><span>more</span></button>' : '') +
+      '</div>' +
+    '</section>';
+  }
+
+  function bindAttention(host, items) {
+    function all() { UI.drill('Needs Action', items.map(function (i) { return i.v; })); }
+    host.querySelectorAll('[data-att-more]').forEach(function (b) { b.addEventListener('click', all); });
+    return all;
   }
 
   function attentionSheet(items) {
@@ -232,7 +264,7 @@ RB.ceo = (function () {
     var steps = M.journey(vs);
     var bands = M.health(vs);
     var fit = M.fitModel(vs);
-    var act = M.needsAttention(vs, fit).slice(0, 5);
+    var act = M.needsAttention(vs, fit);
     var regions = M.groupBy(vs, 'region').map(function (g) {
       g.expected = U.sum(g.rows.filter(function (v) { return v.status === 'Open'; }),
                          function (v) { return v.weighted; });
@@ -276,9 +308,8 @@ RB.ceo = (function () {
       }).join('') + '</div>' +
 
       /* 4. What needs action? */
-      '<div class="section-title">Needs Action<span class="st-sub">top 5 of ' +
-        U.count(M.needsAttention(vs, fit).length) + '</span></div>' +
-      '<div id="act"></div>' +
+      (act.length ? attentionPanel(act, { limit: 6 })
+                  : '<div class="section-title">Needs Action</div><div class="empty">Nothing needs intervention today.</div>') +
 
       '<div class="section-title">Business by Region</div><div id="reg"></div>';
 
@@ -310,23 +341,8 @@ RB.ceo = (function () {
       ].concat(RB.excel.workbook(vs));
     }, 'robobox-business');
 
-    UI.table(host.querySelector('#act'), {
-      rows: act, rowId: function (i) { return i.v.opp.id; }, sortKey: 'value', pageSize: 5,
-      onRowClick: function (id) { RB.views.school(RB.store.opportunityById(id).schoolId); },
-      empty: 'Nothing needs intervention today.',
-      columns: [
-        { key: 'school', label: 'School', get: function (i) { return i.v.school ? i.v.school.name : ''; },
-          render: function (i) { return '<span class="strong">' + U.esc(i.v.school ? i.v.school.name : '—') + '</span>' +
-            '<div class="small muted">' + U.esc([i.v.school && i.v.school.region, i.v.opp.offering].filter(Boolean).join(' · ')) + '</div>'; } },
-        { key: 'value', label: 'Value', num: true, get: function (i) { return i.v.current || 0; },
-          render: function (i) { return '<span class="strong">' + U.esc(U.money(i.v.current)) + '</span>'; } },
-        { key: 'problem', label: 'Problem', get: function (i) { return i.problem; },
-          render: function (i) { return '<span class="tag tag-red">' + U.esc(i.problem) + '</span>'; } },
-        { key: 'owner', label: 'Owner', get: function (i) { return i.v.owner || 'Unassigned'; },
-          render: function (i) { return i.v.owner ? U.esc(i.v.owner) : '<span class="tag tag-red">Unassigned</span>'; } },
-        { key: 'step', label: 'Next Step', sortable: false, get: function (i) { return i.action; } }
-      ]
-    });
+    var seeAll = host.querySelector('#att-strip');
+    if (seeAll) seeAll.addEventListener('click', bindAttention(host, act));
 
     UI.table(host.querySelector('#reg'), {
       rows: regions, rowId: function (g) { return g.key; }, sortKey: 'pipeline', pageSize: 8,
@@ -423,7 +439,7 @@ RB.ceo = (function () {
 
     host.innerHTML = frame('sales', 'Sales',
       'Who is selling, what they did with their day, and whether business moved because of it.') +
-      (att.length ? attentionStrip(att) : '') +
+      attentionPanel(att, { compact: true, limit: 8 }) +
 
       teamTargets() +
 
@@ -498,6 +514,7 @@ RB.ceo = (function () {
     });
     var strip = host.querySelector('#att-strip');
     if (strip) strip.addEventListener('click', function () { UI.drill('Needs Action', att.map(function (i) { return i.v; })); });
+    bindAttention(host, att);
     host.querySelectorAll('[data-target-owner]').forEach(function (tr) {
       tr.addEventListener('click', function () { targetModal(tr.getAttribute('data-target-owner')); });
     });
@@ -697,7 +714,7 @@ RB.ceo = (function () {
 
     host.innerHTML = frame('market', 'Market',
       'Where Robobox is playing, who it is up against, and which segments are worth the effort.') +
-      (att.length ? attentionStrip(att) : '') +
+      attentionPanel(att, { compact: true, limit: 8 }) +
 
       '<div class="section-title">Reach</div>' +
       UI.stats([
@@ -816,6 +833,7 @@ RB.ceo = (function () {
     });
     var strip = host.querySelector('#att-strip');
     if (strip) strip.addEventListener('click', function () { UI.drill('Needs Action', att.map(function (i) { return i.v; })); });
+    bindAttention(host, att);
     host.querySelectorAll('.viz [data-key]').forEach(function (g) {
       g.addEventListener('click', function () {
         var k = g.getAttribute('data-key');
@@ -975,7 +993,7 @@ RB.ceo = (function () {
 
     host.innerHTML = frame('win', 'Win',
       'What a Robobox win looks like, where revenue is stuck, and which schools to go after next.') +
-      (att.length ? attentionStrip(att) : '') +
+      attentionPanel(att, { compact: true, limit: 8 }) +
 
       '<div class="section-title">Sales speed</div>' +
       UI.stats([
@@ -1044,9 +1062,7 @@ RB.ceo = (function () {
           '<span class="fit-meta">' + U.esc(U.money(r.value)) + ' · ' + U.esc(r.action) + '</span></span>' +
         '</button>';
       }).join('') + '</div>' +
-      '<div id="look"></div>' +
-
-      (att.length ? '<div class="section-title">Needs Action · ' + att.length + '</div><div id="att"></div>' : '');
+      '<div id="look"></div>';
 
     bind(host, function () { win(host); }, function () {
       return [
@@ -1080,7 +1096,7 @@ RB.ceo = (function () {
     });
     var strip = host.querySelector('#att-strip');
     if (strip) strip.addEventListener('click', function () { UI.drill('Needs Action', att.map(function (i) { return i.v; })); });
-    if (att.length) attentionTable(host.querySelector('#att'), att);
+    bindAttention(host, att);
     host.querySelectorAll('[data-blocker]').forEach(function (el) {
       el.addEventListener('click', function () {
         var bl = blockers.filter(function (x) { return x.key === el.getAttribute('data-blocker'); })[0];
