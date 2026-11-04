@@ -83,13 +83,26 @@ neither rewrites anything on the server:
 
 ## Checking a build without the server
 
-Open `index.html` straight off a disk and the app loads sample data instead
-of calling the API, so the whole thing can be clicked through with no backend.
-Sign in as any name; the access code is that name in lower case. Served over
-http or https it never does this unless `?demo` is on the address.
+`assets/js/demo.js` holds a sample dataset that lets the whole app run with
+no backend. It is not loaded by `index.html` in this build. To use it while
+checking a build, add this line just before the `app.js` script tag and
+open `index.html` straight off a disk (or add `?demo` to the address):
 
-The sample lives in `assets/js/demo.js`. Deleting that file and its
-`<script>` tag in `index.html` removes the feature entirely.
+```html
+<script src="assets/js/demo.js"></script>
+```
+
+Take the line out again before deploying.
+
+## Motion and design
+
+The visual layer is the last block of `assets/css/app.css` ("Fluid layer").
+It changes how things move, press and layer — no colour token, no brand
+colour, and no workflow. Three small hooks in the JavaScript drive it:
+`UI.closeModal()` and toasts play a short exit before hiding, and
+`RB.app.go()` marks a real page change so the entrance animation plays only
+then, not on every save or filter. All motion is skipped for anyone whose
+system asks for reduced motion.
 
 ## Sign-in
 

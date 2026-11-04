@@ -813,3 +813,383 @@ table.data th, table.data td { padding: 15px 18px; }
     border-color: var(--line, #2C3036) !important;
   }
 }
+
+/* ==========================================================================
+   Fluid layer — motion, depth and feel.
+
+   Appended last so it reads (and reverts) as one block. It changes how things
+   move, press and layer; it changes no colour token, no brand colour, no
+   layout a workflow depends on, and no number on any screen.
+
+   Motion rules this block keeps to:
+   - Feedback on press, not on release, and never longer than ~120ms.
+   - One easing for arrivals (expo-out, the CSS stand-in for a critically
+     damped spring): fast start, soft settle, no overshoot.
+   - Things leave the way they came in.
+   - Entrance animation plays on a page change only. This app re-renders a
+     view on every save and every filter; animating each of those would make
+     every click flicker, so app.js marks a real page change with
+     .route-enter and takes it off once the page has settled.
+   ========================================================================== */
+
+:root {
+  --ease-out: cubic-bezier(.22, 1, .36, 1);
+  --ease-in: cubic-bezier(.55, 0, 1, .45);
+  --ease-std: cubic-bezier(.2, 0, 0, 1);
+  --t-press: 110ms;
+  --t-fast: 180ms;
+  --t-med: 280ms;
+  --t-slow: 460ms;
+
+  /* Depth: three steps, warmed with the charcoal so shadows sit on paper
+     rather than looking grey on it. */
+  --shadow-1: 0 1px 1px rgba(35,38,44,.03), 0 2px 6px rgba(35,38,44,.04), 0 10px 28px rgba(35,38,44,.05);
+  --shadow-hover: 0 2px 4px rgba(35,38,44,.04), 0 14px 34px rgba(35,38,44,.10);
+  --shadow-2: 0 4px 10px rgba(35,38,44,.06), 0 24px 60px rgba(35,38,44,.16);
+  /* the brand's own glow, for the yellow surfaces only */
+  --glow-brand: 0 6px 18px rgba(242,190,20,.34), 0 1px 0 rgba(255,255,255,.35) inset;
+  --ring: 0 0 0 4px rgba(242,190,20,.28);
+  --glass: rgba(244,241,234,.72);
+  --hairline: rgba(35,38,44,.06);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --shadow-1: 0 1px 1px rgba(0,0,0,.25), 0 8px 24px rgba(0,0,0,.28);
+    --shadow-hover: 0 2px 4px rgba(0,0,0,.3), 0 16px 38px rgba(0,0,0,.42);
+    --shadow-2: 0 6px 14px rgba(0,0,0,.35), 0 26px 64px rgba(0,0,0,.55);
+    --glow-brand: 0 6px 20px rgba(242,190,20,.22), 0 1px 0 rgba(255,255,255,.25) inset;
+    --ring: 0 0 0 4px rgba(242,190,20,.22);
+    --glass: rgba(22,24,28,.72);
+    --hairline: rgba(255,255,255,.06);
+  }
+}
+:root[data-theme="dark"] {
+  --shadow-1: 0 1px 1px rgba(0,0,0,.25), 0 8px 24px rgba(0,0,0,.28);
+  --shadow-hover: 0 2px 4px rgba(0,0,0,.3), 0 16px 38px rgba(0,0,0,.42);
+  --shadow-2: 0 6px 14px rgba(0,0,0,.35), 0 26px 64px rgba(0,0,0,.55);
+  --glow-brand: 0 6px 20px rgba(242,190,20,.22), 0 1px 0 rgba(255,255,255,.25) inset;
+  --ring: 0 0 0 4px rgba(242,190,20,.22);
+  --glass: rgba(22,24,28,.72);
+  --hairline: rgba(255,255,255,.06);
+}
+
+/* ------------------------------------------------------------- canvas */
+/* A faint wash of the brand yellow from the top corner, so the paper reads
+   as lit rather than flat. Fixed, so it never scrolls or moves. */
+body { background:
+    radial-gradient(1200px 520px at 100% -10%, rgba(242,190,20,.07), transparent 60%),
+    radial-gradient(900px 480px at -10% 110%, rgba(35,38,44,.035), transparent 60%),
+    var(--canvas);
+  background-attachment: fixed;
+  text-rendering: optimizeLegibility; font-optical-sizing: auto; }
+::selection { background: rgba(242,190,20,.35); color: var(--ink); }
+* { -webkit-tap-highlight-color: transparent; }
+html { scrollbar-gutter: stable; }
+* { scrollbar-width: thin; scrollbar-color: var(--line-strong) transparent; }
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-thumb { background: var(--line-strong); border-radius: 10px;
+  border: 3px solid transparent; background-clip: content-box; }
+::-webkit-scrollbar-track { background: transparent; }
+:focus-visible { outline: none; box-shadow: var(--ring), 0 0 0 1.5px var(--brand); border-radius: 10px; }
+
+/* Typography: tighter as it grows, looser as it shrinks. */
+.page-head h1 { font-weight: 720; letter-spacing: -.038em; line-height: 1.08; }
+.page-head p { letter-spacing: -.003em; }
+.card-head h3 { font-weight: 680; letter-spacing: -.015em; }
+.kpi-value { font-weight: 720; letter-spacing: -.045em; }
+.section-title, .field-label, .kpi-label, .nav-group h4, .cx-step > h3 { letter-spacing: .09em; }
+
+/* ------------------------------------------------------------- boot */
+/* Between the page loading and the data arriving there is nothing on
+   screen. A quiet brand ring fills that gap — after 250ms, so a fast load
+   never flashes it. The error screen replaces the body, so it never shows
+   there either. */
+body:has(> #login[hidden]):has(> #shell[hidden])::before {
+  content: ""; position: fixed; left: 50%; top: 50%; width: 34px; height: 34px;
+  margin: -17px 0 0 -17px; border-radius: 50%;
+  border: 3px solid var(--line); border-top-color: var(--brand);
+  animation: rb-spin .8s linear infinite, rb-fade var(--t-med) var(--ease-out) .25s backwards;
+}
+
+/* ------------------------------------------------------------- sign-in */
+.login { position: relative; overflow: hidden; isolation: isolate; }
+/* Two soft pools of the brand yellow behind the card. Plain gradients, no
+   blur filter: a blurred gradient bands into visible rings. */
+.login::before, .login::after { content: ""; position: absolute; z-index: -1; pointer-events: none; }
+.login::before { inset: 0;
+  background: radial-gradient(700px 520px at 85% 0%, rgba(242,190,20,.22), rgba(255,216,77,.08) 45%, transparent 72%),
+              radial-gradient(620px 460px at 0% 100%, rgba(255,216,77,.14), transparent 70%); }
+.login::after { content: none; }
+/* The lockup is black lettering; on the dark card it sits on a paper plate
+   so the name stays readable. */
+:root[data-theme="dark"] .login-brand img { background: var(--paper); border-radius: 14px; padding: 8px 12px; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .login-brand img { background: var(--paper); border-radius: 14px; padding: 8px 12px; }
+  :root:not([data-theme="light"]) .login::before { opacity: .55; }
+}
+:root[data-theme="dark"] .login::before { opacity: .55; }
+.login-card { position: relative; border: 1px solid var(--hairline);
+  box-shadow: var(--shadow-2); padding: 40px 38px 34px;
+  animation: rb-rise var(--t-slow) var(--ease-out) backwards; }
+.login-card .field, .login-card .btn, .login-sub { animation: rb-rise var(--t-slow) var(--ease-out) backwards; }
+.login-sub { animation-delay: 60ms; }
+.login-card .field:nth-of-type(1) { animation-delay: 100ms; }
+.login-card .field:nth-of-type(2) { animation-delay: 140ms; }
+.login-card .btn { animation-delay: 180ms; }
+.login-error { animation: rb-shake 360ms var(--ease-std); }
+
+/* ------------------------------------------------------------- shell */
+.sidebar { border: 1px solid var(--hairline); scrollbar-width: none; }
+.sidebar::-webkit-scrollbar { display: none; }
+.rail-brand .logo { box-shadow: var(--glow-brand); transition: transform var(--t-med) var(--ease-out); }
+.rail-brand:hover .logo { transform: rotate(-6deg) scale(1.05); }
+.nav-item { position: relative; transition: background-color var(--t-fast) var(--ease-out),
+  color var(--t-fast) var(--ease-out), transform var(--t-press) var(--ease-out),
+  box-shadow var(--t-fast) var(--ease-out); }
+.nav-item .nav-ico { transition: transform var(--t-med) var(--ease-out), opacity var(--t-fast); }
+.nav-item:hover .nav-ico { transform: translateX(2px); opacity: 1; }
+.nav-item:active { transform: scale(.97); }
+.nav-item[aria-current="page"] { box-shadow: var(--glow-brand); }
+.rail-user { transition: background-color var(--t-fast) var(--ease-out); }
+.rail-signout { transition: background-color var(--t-fast) var(--ease-out), color var(--t-fast),
+  transform var(--t-press) var(--ease-out); }
+.rail-signout:active { transform: scale(.98); }
+
+/* The bar over the content floats: it stays put while the page scrolls
+   under a frosted layer, instead of scrolling away or sitting as a slab. */
+@media (min-width: 981px) {
+  .topbar { position: sticky; top: 0; z-index: 40; margin: -16px 0 0; padding: 16px 4px 14px 20px;
+    background: var(--glass); -webkit-backdrop-filter: blur(18px) saturate(160%);
+    backdrop-filter: blur(18px) saturate(160%);
+    -webkit-mask-image: linear-gradient(#000 calc(100% - 12px), transparent);
+    mask-image: linear-gradient(#000 calc(100% - 12px), transparent); }
+  /* the search panel hangs below the bar, outside the fade */
+  .topbar:has(#search-results:not([hidden])) { -webkit-mask-image: none; mask-image: none; }
+}
+@media (max-width: 980px) {
+  .topbar { background: var(--glass); -webkit-backdrop-filter: blur(18px) saturate(160%);
+    backdrop-filter: blur(18px) saturate(160%); border-bottom: 1px solid var(--hairline); }
+  /* with the drawer open the bar is only the hamburger, floating over it */
+  .shell.nav-open .topbar { -webkit-backdrop-filter: none; backdrop-filter: none; border-color: transparent; }
+}
+.topbar-search input { transition: box-shadow var(--t-fast) var(--ease-out), background-color var(--t-fast); }
+.topbar-search input:focus { box-shadow: var(--shadow-1), var(--ring); }
+.topbar-search:focus-within .search-ico { color: var(--ink); }
+.search-ico { transition: color var(--t-fast); }
+#search-results { border: 1px solid var(--hairline); transform-origin: top center;
+  animation: rb-pop var(--t-med) var(--ease-out) backwards; }
+#search-results button { transition: background-color var(--t-fast) var(--ease-out); }
+
+/* ------------------------------------------------------------- buttons */
+.btn, .icon-btn, .seg button, .tabs button, .choice button, .pick, .cal-cell,
+.filter-drop > summary, .daterange > summary, .jstep, .fitcard, .action-item, button.kpi,
+.blockers button, .fab, .toast button, #search-results button {
+  transition: background-color var(--t-fast) var(--ease-out), border-color var(--t-fast) var(--ease-out),
+    color var(--t-fast) var(--ease-out), box-shadow var(--t-med) var(--ease-out),
+    transform var(--t-med) var(--ease-out), opacity var(--t-fast);
+}
+.btn:active, .icon-btn:active, .seg button:active, .choice button:active, .pick:active,
+.cal-cell:active:not(:disabled), .filter-drop > summary:active, .daterange > summary:active,
+.fab:active, .toast button:active, .blockers button:active {
+  transform: scale(.97); transition-duration: var(--t-press); }
+.btn-primary { background: linear-gradient(180deg, var(--hivis), var(--brand) 60%);
+  box-shadow: var(--glow-brand); }
+.btn-primary:hover { background: var(--hivis);
+  box-shadow: 0 10px 24px rgba(242,190,20,.42), 0 1px 0 rgba(255,255,255,.4) inset; }
+.btn-dark { box-shadow: 0 6px 16px rgba(35,38,44,.22); }
+.btn:disabled, .btn[disabled] { opacity: .5; cursor: not-allowed; transform: none; }
+.icon-btn { border-color: var(--hairline); box-shadow: var(--shadow-1); }
+#theme-toggle { transition: transform var(--t-slow) var(--ease-out), background-color var(--t-fast); }
+#theme-toggle:hover { transform: rotate(180deg); }
+
+/* ------------------------------------------------------------- inputs */
+.input, select.input, textarea.input, .filters select {
+  transition: border-color var(--t-fast) var(--ease-out), box-shadow var(--t-fast) var(--ease-out),
+    background-color var(--t-fast); }
+.input:hover:not(:focus), .filters select:hover { border-color: var(--ink-muted); }
+.input:focus, .filters select:focus { border-color: var(--brand); box-shadow: var(--ring); outline: none; }
+select.input, .filters select { appearance: none; -webkit-appearance: none; padding-right: 36px;
+  background-image: linear-gradient(45deg, transparent 50%, var(--ink-muted) 50%),
+    linear-gradient(135deg, var(--ink-muted) 50%, transparent 50%);
+  background-position: calc(100% - 18px) 50%, calc(100% - 13px) 50%;
+  background-size: 5px 5px, 5px 5px; background-repeat: no-repeat; }
+.input:user-invalid { border-color: var(--red); }
+.input:user-invalid:focus { box-shadow: 0 0 0 4px rgba(229,57,43,.16); }
+
+/* ------------------------------------------------------------- cards */
+.card, .table-wrap, .kpi, .jstep, .fitcard, .action-item, .task, .filter-bar, .prev-connect {
+  border: 1px solid var(--hairline); }
+/* Lift only what can be clicked: a card that rises under the pointer has
+   promised something will happen. Hover-capable pointers only, so a tap on
+   a phone never leaves a card stuck in the air. */
+@media (hover: hover) {
+  button.kpi:hover, .jstep:hover, .fitcard:hover, .action-item:hover, .pick:hover {
+    transform: translateY(-2px); box-shadow: var(--shadow-hover); }
+  .jstep[data-last]:hover { box-shadow: var(--glow-brand), var(--shadow-hover); }
+  .choice button:hover:not([aria-pressed="true"]) { transform: translateY(-1px); }
+  .action-item:hover .chev { transform: translateX(3px); color: var(--ink); }
+}
+.action-item .chev { transition: transform var(--t-med) var(--ease-out), color var(--t-fast); }
+button.kpi:active, .jstep:active, .fitcard:active, .action-item:active {
+  transform: scale(.985); transition-duration: var(--t-press); }
+
+/* The anchor tile: same charcoal, lit from one corner with the brand. */
+.kpis > .kpi:first-child { position: relative; overflow: hidden; isolation: isolate;
+  background: radial-gradient(420px 180px at 100% 0%, rgba(242,190,20,.14), transparent 60%), var(--charcoal); }
+.kpis > button.kpi:first-child:hover {
+  background: radial-gradient(420px 180px at 100% 0%, rgba(242,190,20,.22), transparent 60%), #2C3038; }
+.jstep[data-last] { background: linear-gradient(160deg, var(--hivis), var(--brand) 70%); box-shadow: var(--glow-brand); }
+
+.meter, .share-bar { box-shadow: inset 0 1px 2px rgba(35,38,44,.06); }
+.meter > span, .share-bar > span { transform-origin: left center; }
+
+/* ------------------------------------------------------------- tabs + segs */
+.tabs { gap: 6px; border-bottom: 0; padding: 4px; background: var(--surface-sunk);
+  border-radius: var(--r-pill); display: inline-flex; max-width: 100%; scrollbar-width: none; }
+.tabs::-webkit-scrollbar { display: none; }
+.tabs button { padding: 8px 16px; border-bottom: 0; margin: 0; border-radius: var(--r-pill);
+  min-height: 36px; }
+.tabs button:hover { color: var(--ink); background: rgba(255,255,255,.5); }
+.tabs button[aria-pressed="true"] { background: var(--surface); color: var(--ink); box-shadow: var(--shadow-1); }
+:root[data-theme="dark"] .tabs button:hover { background: rgba(255,255,255,.05); }
+:root[data-theme="dark"] .tabs button[aria-pressed="true"] { background: var(--surface-2); }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .tabs button:hover { background: rgba(255,255,255,.05); }
+  :root:not([data-theme="light"]) .tabs button[aria-pressed="true"] { background: var(--surface-2); }
+}
+.seg button[aria-pressed="true"] { box-shadow: var(--shadow-1); }
+
+/* ------------------------------------------------------------- tables */
+table.data th { background: var(--surface); }
+table.data tbody tr { transition: background-color var(--t-fast) var(--ease-out); }
+table.data tbody tr.row-link td:first-child { transition: box-shadow var(--t-med) var(--ease-out); }
+
+/* ------------------------------------------------------------- choices */
+.choice button { position: relative; border-width: 1.5px; }
+.choice button[aria-pressed="true"] { box-shadow: 0 8px 20px rgba(35,38,44,.18);
+  animation: rb-press-in var(--t-med) var(--ease-out); }
+.pick { border-color: var(--hairline); box-shadow: var(--shadow-1); }
+
+/* ------------------------------------------------------------- filters */
+.filter-drop[open] .filter-bar, .daterange[open] .daterange-pop {
+  transform-origin: top left; animation: rb-pop var(--t-med) var(--ease-out) backwards; }
+.filter-drop > summary, .daterange > summary { box-shadow: var(--shadow-1); border-color: var(--hairline); }
+.filter-drop[open] > summary { box-shadow: 0 6px 16px rgba(35,38,44,.2); }
+.cal-cell[aria-pressed="true"] { box-shadow: 0 6px 14px rgba(35,38,44,.2); }
+.cal-cell .cal-dot { box-shadow: 0 2px 6px rgba(242,190,20,.35); }
+
+/* ------------------------------------------------------------- modal */
+/* Arrives from slightly below and grows into place; leaves the same way.
+   The scrim dims and blurs what is behind it, so the task in front is the
+   only thing in focus. */
+.modal-backdrop { background: rgba(35,38,44,.38); -webkit-backdrop-filter: blur(6px) saturate(120%);
+  backdrop-filter: blur(6px) saturate(120%); animation: rb-fade var(--t-med) var(--ease-out) backwards; }
+.modal { border: 1px solid var(--hairline); overscroll-behavior: contain;
+  animation: rb-modal-in var(--t-slow) var(--ease-out) backwards; }
+.modal-head { background: color-mix(in srgb, var(--surface) 88%, transparent);
+  -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); border-bottom-color: var(--hairline); }
+.modal-head .icon-btn { box-shadow: none; border-color: transparent; background: var(--surface-sunk);
+  border-radius: 50%; width: 36px; height: 36px; }
+.modal-head .icon-btn:hover { transform: rotate(90deg); background: var(--line); }
+/* Each step of a multi-step form slides in as it replaces the last. */
+#modal-body > * { animation: rb-step-in var(--t-med) var(--ease-out) backwards; }
+.modal-root.is-closing { pointer-events: none; }
+.modal-root.is-closing .modal-backdrop { animation: rb-fade-out var(--t-fast) var(--ease-in) both; }
+.modal-root.is-closing .modal { animation: rb-modal-out var(--t-fast) var(--ease-in) both; }
+
+/* On a phone the dialog is a sheet: up from the bottom edge, down to leave. */
+@media (max-width: 560px) {
+  .modal-root { place-items: end center; padding: 0; }
+  .modal { width: 100%; max-height: 94vh; border-radius: var(--r-xl) var(--r-xl) 0 0;
+    padding-bottom: env(safe-area-inset-bottom); animation-name: rb-sheet-in; }
+  .modal::before { content: ""; position: sticky; top: 0; display: block; width: 40px; height: 5px;
+    margin: 8px auto -13px; border-radius: 99px; background: var(--line-strong); z-index: 4; }
+  .modal-root.is-closing .modal { animation-name: rb-sheet-out; }
+  .modal-head { padding: 18px 20px; }
+  .modal-body { padding: 20px; }
+}
+
+/* ------------------------------------------------------------- toast */
+.toast { border: 1px solid rgba(255,255,255,.08); padding: 13px 18px 13px 20px;
+  box-shadow: 0 18px 40px rgba(35,38,44,.28);
+  animation: rb-toast-in var(--t-slow) var(--ease-out) backwards; }
+.toast.is-leaving { animation: rb-toast-out var(--t-fast) var(--ease-in) both; }
+.toast > span::before { content: ""; display: inline-block; width: 8px; height: 8px; margin-right: 10px;
+  border-radius: 50%; background: var(--brand); vertical-align: 1px; box-shadow: 0 0 0 4px rgba(242,190,20,.18); }
+@media (max-width: 980px) { .toast { bottom: 88px; max-width: calc(100vw - 28px); } }
+
+/* ------------------------------------------------------------- drawer */
+@media (max-width: 980px) {
+  .sidebar { transition: transform var(--t-slow) var(--ease-out), box-shadow var(--t-slow); }
+  /* The scrim is always there and fades, instead of popping in and out. */
+  .shell::after { content: ""; position: fixed; inset: 0; z-index: 45; background: rgba(35,38,44,.38);
+    -webkit-backdrop-filter: blur(3px); backdrop-filter: blur(3px);
+    opacity: 0; pointer-events: none; transition: opacity var(--t-med) var(--ease-out); }
+  .shell.nav-open::after { opacity: 1; pointer-events: auto; }
+  .fab { background: linear-gradient(180deg, var(--hivis), var(--brand) 60%);
+    box-shadow: 0 12px 28px rgba(242,190,20,.42), 0 1px 0 rgba(255,255,255,.4) inset;
+    padding-bottom: calc(16px + env(safe-area-inset-bottom) * .5);
+    animation: rb-rise var(--t-slow) var(--ease-out) .15s backwards; }
+}
+
+/* ------------------------------------------------------------- page entrance */
+/* Only on a real page change (see the note at the top of this block). The
+   page arrives in reading order: heading, then the strip of numbers, then
+   the rest — each a beat behind the last, none more than a quarter-second. */
+.route-enter > * { animation: rb-rise var(--t-slow) var(--ease-out) backwards; }
+.route-enter > :nth-child(2) { animation-delay: 40ms; }
+.route-enter > :nth-child(3) { animation-delay: 80ms; }
+.route-enter > :nth-child(4) { animation-delay: 120ms; }
+.route-enter > :nth-child(5) { animation-delay: 160ms; }
+.route-enter > :nth-child(n+6) { animation-delay: 200ms; }
+.route-enter .kpis > *, .route-enter .journey > *, .route-enter .fitcards > *,
+.route-enter .grid > * { animation: rb-rise var(--t-slow) var(--ease-out) backwards; }
+.route-enter .kpis > :nth-child(2), .route-enter .journey > :nth-child(2),
+.route-enter .grid > :nth-child(2), .route-enter .fitcards > :nth-child(2) { animation-delay: 50ms; }
+.route-enter .kpis > :nth-child(3), .route-enter .journey > :nth-child(3),
+.route-enter .grid > :nth-child(3), .route-enter .fitcards > :nth-child(3) { animation-delay: 100ms; }
+.route-enter .kpis > :nth-child(4), .route-enter .journey > :nth-child(4),
+.route-enter .grid > :nth-child(4), .route-enter .fitcards > :nth-child(4) { animation-delay: 150ms; }
+.route-enter .journey > :nth-child(5), .route-enter .fitcards > :nth-child(5) { animation-delay: 200ms; }
+.route-enter .journey > :nth-child(n+6), .route-enter .fitcards > :nth-child(n+6) { animation-delay: 250ms; }
+/* bars fill from zero; charts sweep in left to right */
+.route-enter .meter > span, .route-enter .share-bar > span {
+  animation: rb-grow 700ms var(--ease-out) 180ms backwards; }
+.route-enter .viz:not(.stat-spark) { animation: rb-wipe 800ms var(--ease-out) 160ms backwards; }
+
+/* ------------------------------------------------------------- keyframes */
+@keyframes rb-spin { to { transform: rotate(360deg); } }
+@keyframes rb-fade { from { opacity: 0; } }
+@keyframes rb-fade-out { to { opacity: 0; } }
+@keyframes rb-rise { from { opacity: 0; transform: translateY(10px); } }
+@keyframes rb-pop { from { opacity: 0; transform: translateY(-4px) scale(.98); } }
+@keyframes rb-step-in { from { opacity: 0; transform: translateX(12px); } }
+@keyframes rb-press-in { 0% { transform: scale(.97); } 100% { transform: none; } }
+@keyframes rb-modal-in { from { opacity: 0; transform: translateY(14px) scale(.97); } }
+@keyframes rb-modal-out { to { opacity: 0; transform: translateY(10px) scale(.98); } }
+@keyframes rb-sheet-in { from { transform: translateY(100%); } }
+@keyframes rb-sheet-out { to { transform: translateY(100%); } }
+@keyframes rb-toast-in { from { opacity: 0; transform: translate(-50%, 16px) scale(.96); } }
+@keyframes rb-toast-out { to { opacity: 0; transform: translate(-50%, 10px) scale(.97); } }
+@keyframes rb-grow { from { transform: scaleX(0); } }
+@keyframes rb-wipe { from { clip-path: inset(0 100% 0 0); opacity: .4; } to { clip-path: inset(0 0 0 0); } }
+@keyframes rb-shake { 0%, 100% { transform: none; } 20% { transform: translateX(-5px); }
+  40% { transform: translateX(5px); } 60% { transform: translateX(-3px); } 80% { transform: translateX(2px); } }
+
+/* ------------------------------------------------------------- comfort */
+/* Reduced motion keeps meaning (colour, focus, state) and drops travel:
+   the rule near the top of this file already stops every transition and
+   animation; ui.js also skips the close delay so nothing waits on a
+   motion that will not play. */
+@media (prefers-reduced-transparency: reduce) {
+  .topbar, .modal-head, .modal-backdrop, .shell::after { -webkit-backdrop-filter: none; backdrop-filter: none; }
+  .topbar { background: var(--canvas); }
+}
+@media (prefers-contrast: more) {
+  .card, .table-wrap, .kpi, .jstep, .fitcard, .action-item, .pick, .modal { border-color: var(--line-strong); }
+}
+/* The global reduced-motion rule matches elements, not their ::before and
+   ::after, which is where the boot ring and the drawer scrim live. */
+@media (prefers-reduced-motion: reduce) {
+  *::before, *::after { transition: none !important; animation: none !important; }
+}

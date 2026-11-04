@@ -4,10 +4,28 @@ window.RB = window.RB || {};
 RB.ui = (function () {
   'use strict';
   var U = RB.util;
-  var toastTimer;
+  var toastTimer, modalTimer;
+
+  /* How long the leaving animation in app.css runs. Under reduced motion
+   * there is no animation to wait for, so nothing waits. */
+  var LEAVE_MS = 180;
+  function still() { return matchMedia('(prefers-reduced-motion: reduce)').matches; }
+
+  /* Hide an element after its leaving animation, unless something shows it
+   * again first - then the leave is simply abandoned, never finished on top
+   * of the new content. */
+  function leave(el, cls, timer) {
+    clearTimeout(timer);
+    if (el.hidden) return null;
+    if (still()) { el.hidden = true; return null; }
+    el.classList.add(cls);
+    return setTimeout(function () { el.hidden = true; el.classList.remove(cls); }, LEAVE_MS);
+  }
 
   function toast(msg, action) {
     var el = document.getElementById('toast');
+    clearTimeout(toastTimer);
+    el.classList.remove('is-leaving');
     el.innerHTML = '<span>' + U.esc(msg) + '</span>' +
       (action ? '<button type="button" id="toast-action">' + U.esc(action.label) + '</button>' : '');
     el.hidden = false;
@@ -16,13 +34,16 @@ RB.ui = (function () {
         el.hidden = true; action.run();
       });
     }
-    clearTimeout(toastTimer);
-    toastTimer = setTimeout(function () { el.hidden = true; }, action ? 7000 : 2800);
+    toastTimer = setTimeout(function () { toastTimer = leave(el, 'is-leaving', toastTimer); },
+                            action ? 7000 : 2800);
   }
 
   function modal(title, body, opts) {
     opts = opts || {};
     var root = document.getElementById('modal-root');
+    // Opening while the last one is still closing: cancel the close.
+    clearTimeout(modalTimer);
+    root.classList.remove('is-closing');
     root.querySelector('.modal').classList.toggle('wide', !!opts.wide);
     document.getElementById('modal-title').textContent = title;
     var host = document.getElementById('modal-body');
@@ -33,7 +54,9 @@ RB.ui = (function () {
     if (opts.onMount) opts.onMount(host);
     return host;
   }
-  function closeModal() { document.getElementById('modal-root').hidden = true; }
+  function closeModal() {
+    modalTimer = leave(document.getElementById('modal-root'), 'is-closing', modalTimer);
+  }
 
   /* ONE headline tile, used by every screen. The old `.stat` names are kept as
    * the call signature so nothing else had to change:

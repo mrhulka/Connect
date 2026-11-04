@@ -77,15 +77,25 @@ RB.app = (function () {
     host.querySelector('#rail-signout').addEventListener('click', signOut);
   }
 
+  /* A page change plays the entrance in app.css; a re-render of the same
+   * page (a save, a filter) does not, or every click would flicker. The
+   * class comes off once the slowest staggered item has landed. */
+  var enterTimer;
   function go(route) {
     if (!allowed(route)) route = defaultRoute();
+    var changed = route !== current;
     current = route;
     location.hash = '#/' + route;
     nav();
     var main = document.getElementById('main');
     main.innerHTML = '';
+    if (changed) {
+      clearTimeout(enterTimer);
+      main.classList.add('route-enter');
+      enterTimer = setTimeout(function () { main.classList.remove('route-enter'); }, 1100);
+    }
     ROUTES[route].render(main);
-    window.scrollTo(0, 0);
+    if (changed) window.scrollTo(0, 0);
   }
 
   function refresh() { if (current) go(current); }
@@ -519,7 +529,14 @@ RB.app = (function () {
       var dark = document.documentElement.getAttribute('data-theme') === 'dark' ||
         (!document.documentElement.getAttribute('data-theme') && matchMedia('(prefers-color-scheme: dark)').matches);
       var next = dark ? 'light' : 'dark';
-      document.documentElement.setAttribute('data-theme', next);
+      var flip = function () { document.documentElement.setAttribute('data-theme', next); };
+      // A cross-fade where the browser can do one, so a whole screen does
+      // not snap from light to dark in a single frame.
+      if (document.startViewTransition && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
+        document.startViewTransition(flip);
+      } else {
+        flip();
+      }
       try { localStorage.setItem('robobox.theme', next); } catch (e) {}
     });
   }
