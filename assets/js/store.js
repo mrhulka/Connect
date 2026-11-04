@@ -17,12 +17,6 @@ RB.store = (function () {
           if (!res.ok) throw new Error('The server at ' + API_BASE + ' answered ' + res.status + '.');
           return res.json();
         }, function () {
-          /* The call never reached the server, or the browser blocked the
-           * reply. Nearly always one of two things: the API is down, or this
-           * page is served from an origin the API does not allow (CORS).
-           * Swallowing this used to boot the app with no data at all — an
-           * empty sign-in list and no clue why — so it is thrown on to the
-           * error screen instead. */
           throw new Error('Could not reach ' + API_BASE + ' from ' + location.origin +
             '. The API is either down, or not allowing this address to call it.');
         });
@@ -38,9 +32,7 @@ RB.store = (function () {
           return res.json();
         });
     },
-    clear: function () {
-      // Handled server-side if reset is triggered, or can call a reset endpoint if needed
-    }
+    clear: function () {}
   };
 
   var adapter = apiAdapter;
@@ -48,10 +40,8 @@ RB.store = (function () {
   function load() {
     return Promise.resolve(adapter.read()).then(function (stored) {
       state = (stored && stored.schools && stored.version === 2) ? stored : {
-        version: 2, meta: { source: 'MySQL Database' }, users: [], schools: [], contacts: [], opportunities: [], connects: []
+        version: 2, meta: { source: 'MySQL Database' }, users: [], schools: [], contacts: [], opportunities: [], connects: [], pricingTargets: []
       };
-      /* No people means nobody can sign in, so the sign-in screen would just
-       * sit there with an empty list. Say what happened instead. */
       if (!state.users.length) {
         throw new Error('The server at ' + API_BASE + ' sent no people to sign in as.');
       }
@@ -60,12 +50,6 @@ RB.store = (function () {
     });
   }
 
-  /* The product list changed under the data: some products were renamed and
-   * one was retired. Settling both here, once, as the data arrives means
-   * every screen, every roll-up and every export sees the current list
-   * without any of them knowing anything happened. Nothing is rewritten on
-   * the server, so both are reversible from model.js — OFFERING_ALIAS for
-   * the renames, OFFERING_RETIRED for what is gone. */
   function reconcileOfferings() {
     var dropped = {};
     state.opportunities = state.opportunities.filter(function (o) {
@@ -74,7 +58,6 @@ RB.store = (function () {
       if (to !== o.offering) { o.renamedFrom = o.offering; o.offering = to; }
       return true;
     });
-    // A connect only makes sense against the deal it was logged on.
     state.connects = state.connects.filter(function (c) { return !dropped[c.opportunityId]; });
   }
 
@@ -128,16 +111,25 @@ RB.store = (function () {
   /* ------------------------------------------------------------ writes */
   function addUser(fields) {
     var name = String(fields.name || '').trim();
+    var role = fields.role || 'sales';
+
     var base = name.split(/\s+/)[0].toUpperCase().replace(/[^A-Z0-9]/g, '') || 'USER';
     var key = base, n = 2;
     while (state.users.some(function (u) { return u.ownerKey === key; })) key = base + n++;
     var id = key.toLowerCase();
+
     var u = {
-      id: id, name: name, role: fields.role || 'sales', ownerKey: key,
-      designation: fields.designation || null, region: fields.region || null,
+      id: id,
+      name: name,
+      role: role,
+      ownerKey: key,
+      designation: fields.designation || (role === 'outsight' ? 'Outsider Partner' : null),
+      region: fields.region || null,
       email: fields.email || (id + '@robobox.in'),
-      pin: fields.pin || id, origin: 'app'
+      pin: fields.pin || id,
+      origin: 'app'
     };
+
     state.users.push(u);
     commit({ type: 'user', user: u });
     return u;
@@ -176,12 +168,9 @@ RB.store = (function () {
 
   function addContact(fields) {
     var c = Object.assign({ id: U.uid('CON'), schoolId: null, name: '', role: null, phone: null, email: null }, fields);
-
-    // Safety safeguard: if school doesn't exist locally, create a placeholder school first
     if (c.schoolId && !schoolById(c.schoolId)) {
       addSchool({ id: c.schoolId, name: 'Auto-created School (' + c.schoolId + ')' });
     }
-
     state.contacts.push(c);
     commit({ type: 'contact_add', contact: c });
     return c;
@@ -195,12 +184,9 @@ RB.store = (function () {
       closedValue: null, lossReason: null, holdReason: null, closedAt: null,
       origin: 'app', createdAt: U.iso(U.today())
     }, fields);
-
-    // Safety safeguard: if school doesn't exist locally, create a placeholder school first
     if (o.schoolId && !schoolById(o.schoolId)) {
       addSchool({ id: o.schoolId, name: 'Auto-created School (' + o.schoolId + ')' });
     }
-
     state.opportunities.push(o);
     commit({ type: 'opportunity_add', opportunity: o });
     return o;
@@ -215,12 +201,9 @@ RB.store = (function () {
       stage: null, expectedValue: null, probability: null, expectedClosure: null,
       notes: null, remarks: null, at: new Date().toISOString(), origin: 'app'
     }, fields);
-
-    // Safety safeguard: if school doesn't exist locally, create a placeholder school first
     if (c.schoolId && !schoolById(c.schoolId)) {
       addSchool({ id: c.schoolId, name: 'Auto-created School (' + c.schoolId + ')' });
     }
-
     state.connects.push(c);
 
     var opp = opportunityById(c.opportunityId);
@@ -260,16 +243,37 @@ RB.store = (function () {
     });
   }
 
+  // 👈 SYNC PRICING TARGET CHANGES TO THE BACKEND DATABASE
+  function savePricingTarget(item) {
+    state.pricingTargets = state.pricingTargets || [];
+    var existing = state.pricingTargets.find(function (p) { return p.id === item.id; });
+    if (existing) {
+      Object.assign(existing, item);
+    } else {
+      state.pricingTargets.push(item);
+    }
+    commit({ type: 'pricing_target', item: item });
+  }
+
+  function removePricingTarget(id) {
+    state.pricingTargets = state.pricingTargets || [];
+    state.pricingTargets = state.pricingTargets.filter(function (p) { return p.id !== id; });
+    commit({ type: 'pricing_target_delete', itemId: id });
+  }
+
   function exportState() { return JSON.stringify(state, null, 1); }
 
   return {
     load: load, commit: commit,
     schools: schools, contacts: contacts, opportunities: opportunities,
     connects: connects, users: users, meta: meta,
+    pricingTargets: function () { return state.pricingTargets || []; }, 
+    savePricingTarget: savePricingTarget,                               
+    removePricingTarget: removePricingTarget,
     schoolById: schoolById, opportunityById: opportunityById, contactById: contactById,
     userById: userById, contactsFor: contactsFor, opportunitiesFor: opportunitiesFor,
     connectsForSchool: connectsForSchool, findSchool: findSchool,
-    addUser: addUser, updateUser: updateUser, removeUser: removeUser, // <-- ADD removeUser HERE
+    addUser: addUser, updateUser: updateUser, removeUser: removeUser,
     addSchool: addSchool, addContact: addContact, addOpportunity: addOpportunity,
     logConnect: logConnect, updateSchool: updateSchool, updateOpportunity: updateOpportunity,
     resetDemo: resetDemo, exportState: exportState,

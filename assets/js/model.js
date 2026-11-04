@@ -976,10 +976,10 @@ RB.model = (function () {
    * MRP is the opening pitch. SP is the floor — the minimum operating price,
    * below which the team may not sell. */
   var KIT_BANDS = [
-    { key: 'srkg-2',  label: 'Sr KG, 1st, 2nd', mrp: 1999, sp: 1199.4, students: 80 },
-    { key: '3-5',     label: '3rd, 4th, 5th',   mrp: 2999, sp: 1799.4, students: 80 },
-    { key: '6-8',     label: '6th, 7th, 8th',   mrp: 3999, sp: 1999.5, students: 40 },
-    { key: '9-10',    label: '9th & 10th',      mrp: 4999, sp: 2499.5, students: 40 }
+    { key: 'srkg-2', label: 'Sr KG, 1st, 2nd', mrp: 1999, sp: 1199.4, students: 80 },
+    { key: '3-5', label: '3rd, 4th, 5th', mrp: 2999, sp: 1799.4, students: 80 },
+    { key: '6-8', label: '6th, 7th, 8th', mrp: 3999, sp: 1999.5, students: 40 },
+    { key: '9-10', label: '9th & 10th', mrp: 4999, sp: 2499.5, students: 40 }
   ];
 
   /* The sheet's illustrative split, added up. This is the unit the plan values
@@ -991,29 +991,43 @@ RB.model = (function () {
   }, { mrp: 0, sp: 0 });
 
   var CATALOGUE = [
-    { key: 'Innovation Stem Lab + Curriculum', label: 'Innovation Stem Lab + Curriculum',
+    {
+      key: 'Innovation Stem Lab + Curriculum', label: 'Innovation Stem Lab + Curriculum',
       mrp: 1511738.1196, sp: 1511738.1196, base: 700,
-      includes: 'STEM Lab + 2 Teachers + Text book / Exam' },
-    { key: 'Advance Composite Skill Lab + Curriculum', label: 'Advance Composite Skill Lab + Curriculum',
+      includes: 'STEM Lab + 2 Teachers + Text book / Exam'
+    },
+    {
+      key: 'Advance Composite Skill Lab + Curriculum', label: 'Advance Composite Skill Lab + Curriculum',
       mrp: 2002527, sp: 2002527, base: 700,
-      includes: 'Composite Skill Lab + 2 Teachers + Text book / Exam' },
-    { key: 'RBX Kits + Curriculum', label: 'RBX Kits + Curriculum',
+      includes: 'Composite Skill Lab + 2 Teachers + Text book / Exam'
+    },
+    {
+      key: 'RBX Kits + Curriculum', label: 'RBX Kits + Curriculum',
       mrp: 2294610, sp: 2294610, base: 700,
-      includes: 'Kits + 2 Teachers + Text book / Exam' },
-    { key: 'Composite Skill Labs + Kits Curriculum', label: 'Composite Skill Labs + Kits Curriculum',
+      includes: 'Kits + 2 Teachers + Text book / Exam'
+    },
+    {
+      key: 'Composite Skill Labs + Kits Curriculum', label: 'Composite Skill Labs + Kits Curriculum',
       mrp: 2977137, sp: 2977137, base: 700,
-      includes: 'Composite Skill Lab + Kits + 2 Teachers' },
-    { key: 'Composite Skill Lab (One Time Sale)', label: 'Composite Skill Lab (One Time Sale)',
+      includes: 'Composite Skill Lab + Kits + 2 Teachers'
+    },
+    {
+      key: 'Composite Skill Lab (One Time Sale)', label: 'Composite Skill Lab (One Time Sale)',
       mrp: 1403610, sp: 982527, base: null, oneTime: true,
-      includes: 'One-time sale' },
-    { key: 'Robobox Kits', label: 'Robobox Kits',
+      includes: 'One-time sale'
+    },
+    {
+      key: 'Robobox Kits', label: 'Robobox Kits',
       // Both totals are the bands added up at the sheet's own split, never
       // typed in: a figure copied by hand is a figure that drifts.
       mrp: KIT_TOTAL.mrp, sp: KIT_TOTAL.sp, base: null, oneTime: true, bands: KIT_BANDS,
-      includes: 'One-time sale — priced per standard band, not per school' },
-    { key: 'Bagless', label: 'Bagless Skills', activities: [
+      includes: 'One-time sale — priced per standard band, not per school'
+    },
+    {
+      key: 'Bagless', label: 'Bagless Skills', activities: [
         'Hydroponics', 'Planetarium', 'Bank in School', 'Pottery', 'Animal Bonding', 'Industry 4.0'
-      ] }
+      ]
+    }
   ];
 
   /* The picker reads off the catalogue: one list to keep in step, and a new
@@ -1036,10 +1050,11 @@ RB.model = (function () {
   /* The bagless list is the CEO's to write. The catalogue's six are only the
    * starting list; once Settings saves one, `cfg.activities` is the list. */
   function activities() {
-    if (cfg.activities) return cfg.activities.slice();
-    var c = CATALOGUE.filter(function (x) { return x.activities; })[0];
+    if (cfg && cfg.activities) return cfg.activities.slice();
+    var c = CATALOGUE.filter(function (x) { return x && x.activities; })[0];
     return c ? c.activities.slice() : [];
   }
+
   function setActivities(list) {
     setConfig({
       activities: U.uniq(list.map(function (a) { return String(a).trim(); })

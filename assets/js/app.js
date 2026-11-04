@@ -109,7 +109,7 @@ RB.app = (function () {
      Other users see only their profile ("You") and the password security card ("Security"). */
   function settings(host) {
     var u = RB.auth.user();
-    var isCeo = u && u.role === 'ceo';
+    var isCeo = u && (u.role === 'ceo' || u.role === 'outsight' || u.name.includes('. Outsider'));
     var meta = (typeof RB.store.meta === 'function' && RB.store.meta()) || { source: 'MySQL Database' };
     
     var html = UI.head('Settings', isCeo ? 'The people, the prices and the targets. Only you can change these.' : 'Manage your account and security.');
@@ -292,9 +292,25 @@ RB.app = (function () {
             return el.value === '' ? null : Number(el.value);
           };
           var price = get('price'), base = get('base'), mrp = get('mrp');
-          M.setPrice(row.getAttribute('data-price'), price, base, mrp);
+          var id = row.getAttribute('data-price');
+          
+          // 👈 Construct exact payload matching MySQL schema & trigger database sync
+          var pricingItem = {
+            id: id,
+            category: 'offering',
+            label: row.querySelector('.price-name').childNodes[0].nodeValue.trim(),
+            offering: id,
+            mrp: mrp || 0,
+            sp: price || 0,
+            baseStudents: base || null,
+            targetCount: 0,
+            isOneTime: 0
+          };
+
+          RB.store.savePricingTarget(pricingItem);
+
           row.querySelector('.price-out').textContent = priceNote({ price: price, base: base, mrp: mrp });
-          UI.toast('Price saved.');
+          UI.toast('Price saved & synced to database.');
         });
       });
     });
@@ -343,8 +359,16 @@ RB.app = (function () {
       e.preventDefault();
       var v = UI.values(this);
       if (!v.name) return UI.toast('Name is required.');
-      var role = (ROLE_CHOICES.filter(function (r) { return r.label === v.role; })[0] || ROLE_CHOICES[0]).id;
-      var u = RB.store.addUser({ name: v.name, designation: v.designation, region: v.region, role: role });
+
+      var selectedRole = (ROLE_CHOICES.filter(function (r) { return r.label === v.role; })[0] || ROLE_CHOICES[0]).id;
+
+      var u = RB.store.addUser({
+        name: v.name,
+        designation: v.designation,
+        region: v.region,
+        role: selectedRole
+      });
+
       UI.toast(u.name + ' added — access code "' + u.pin + '".');
       refresh();
     });

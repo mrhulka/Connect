@@ -733,6 +733,8 @@ table.data th, table.data td { padding: 15px 18px; }
 .fitcard { border-radius: var(--r-lg); }
 .topbar-search input { border: 0; box-shadow: var(--shadow-1); }
 
+
+
 /* A date field has a browser-set minimum width; two of them side by side do
    not fit a phone, and the flex row pushed the page sideways. */
 @media (max-width: 560px) {
@@ -775,3 +777,39 @@ table.data th, table.data td { padding: 15px 18px; }
 :root:not([data-theme="light"]) .cal-cell.in-range,
 :root[data-theme="dark"] .cal-cell.in-range { background: rgba(242,190,20,.16); border-color: transparent; }
 @media (max-width: 560px) { .daterange-pop { width: min(320px, calc(100vw - 64px)); } }
+
+/* Dark Theme Selected State (Brand Gold Highlight) */
+:root[data-theme="dark"] .btn-multi[aria-pressed="true"],
+:root[data-theme="dark"] [data-choice-multi] button[aria-pressed="true"] {
+  background: var(--brand, #F2BE14) !important;
+  color: var(--brand-ink, #23262C) !important;
+  border-color: var(--brand, #F2BE14) !important;
+  box-shadow: 0 0 12px rgba(242, 190, 20, 0.35);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .btn-multi[aria-pressed="true"],
+  :root:not([data-theme="light"]) [data-choice-multi] button[aria-pressed="true"] {
+    background: var(--brand, #F2BE14) !important;
+    color: var(--brand-ink, #23262C) !important;
+    border-color: var(--brand, #F2BE14) !important;
+    box-shadow: 0 0 12px rgba(242, 190, 20, 0.35);
+  }
+}
+
+/* Unselected buttons in Dark Theme */
+:root[data-theme="dark"] .btn-multi[aria-pressed="false"],
+:root[data-theme="dark"] [data-choice-multi] button[aria-pressed="false"] {
+  background: var(--surface-2, #24272D) !important;
+  color: var(--ink-2, #C3C7CD) !important;
+  border-color: var(--line, #2C3036) !important;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .btn-multi[aria-pressed="false"],
+  :root:not([data-theme="light"]) [data-choice-multi] button[aria-pressed="false"] {
+    background: var(--surface-2, #24272D) !important;
+    color: var(--ink-2, #C3C7CD) !important;
+    border-color: var(--line, #2C3036) !important;
+  }
+}
