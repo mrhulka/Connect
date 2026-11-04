@@ -103,13 +103,23 @@ its own.
 On a phone (980px and narrower) the app runs as an app:
 
 - an app bar with the brand, search and the theme switch;
-- a bottom tab bar (rendered by `tabbar()` in `app.js`) with the three places
-  each role uses most, Log Connect in the middle, and More, which opens the
-  full menu as a sheet;
+- a bottom tab bar (rendered by `tabbar()` in `app.js`): a floating pill of
+  frosted glass with the three places each role uses most, Log Connect in
+  the middle, and More, which opens the full menu as a sheet. A capsule
+  slides to the current tab; the bar settles into a smaller pill while
+  scrolling down and steps aside while the keyboard is up;
 - every dialog is a bottom sheet; sheets can be pulled down to close
   (`UI.dragToDismiss` in `ui.js`);
 - every table turns into a stack of cards. `ui.js` captions each cell from
   its table's header row automatically, so a new table needs no extra work.
+
+Sizes step with the screen, not one breakpoint: tested on a 280px fold
+cover screen, 320-360px Android and iPhone SE, 390-430px flagships, 480px
+large phones, a 712px tablet, and phones in landscape. Where a browser cannot
+blur, frosted surfaces fall back to solid; where it has no `dvh` or
+`color-mix()`, the rules fall back to `vh` and solid colours.
+`interactive-widget=resizes-content` in the viewport tag keeps a sheet's
+button above the Android keyboard.
 
 Icons are inline SVG from `UI.icon(name)` in `ui.js`. Headings and large
 numbers use Bricolage Grotesque, loaded with Inter from Google Fonts.

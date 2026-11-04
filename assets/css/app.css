@@ -51,7 +51,7 @@
   --display: "Bricolage Grotesque", "Inter", system-ui, sans-serif;
   --tap: 44px;
   --rail: 252px;
-  --tab-h: 66px;
+  --tab-h: 62px;
   --safe-b: env(safe-area-inset-bottom, 0px);
   --safe-t: env(safe-area-inset-top, 0px);
 
@@ -323,11 +323,11 @@ body:has(> #login[hidden]):has(> #shell[hidden])::before {
   .topbar.searching .search-cancel { display: block; border: 0; background: none; font-weight: 600;
     color: var(--ink); padding: 8px 2px; cursor: pointer; }
   #search-results { position: fixed; top: calc(64px + var(--safe-t)); left: 12px; right: 12px;
-    max-height: calc(100dvh - 160px - var(--safe-t)); }
+    max-height: calc(100vh - 180px); max-height: calc(100dvh - 160px - var(--safe-t)); }
 
   /* The rail becomes a sheet that rises from the bottom edge. */
   .sidebar { position: fixed; z-index: 50; left: 8px; right: 8px; top: auto; bottom: 8px;
-    height: auto; max-height: calc(100dvh - 64px - var(--safe-t)); padding: 26px 14px calc(14px + var(--safe-b));
+    height: auto; max-height: calc(100vh - 80px); max-height: calc(100dvh - 64px - var(--safe-t)); padding: 26px 14px calc(14px + var(--safe-b));
     border-radius: var(--r-xl); box-shadow: var(--shadow-2); touch-action: pan-y;
     transform: translateY(calc(100% + 24px)); visibility: hidden;
     transition: transform var(--t-slow) var(--ease-out), visibility 0s linear var(--t-slow); }
@@ -351,31 +351,67 @@ body:has(> #login[hidden]):has(> #shell[hidden])::before {
     opacity: 0; pointer-events: none; transition: opacity var(--t-med) var(--ease-out); }
   .shell.nav-open::after { opacity: 1; pointer-events: auto; }
 
-  /* Tab bar: the three places this person goes most, Log Connect raised in
-     the middle. Charcoal, floating, the page scrolling under it. */
-  .tabbar { display: flex; position: fixed; z-index: 44; left: 12px; right: 12px;
-    bottom: calc(10px + var(--safe-b)); height: var(--tab-h); padding: 0 6px; align-items: center;
-    background: var(--glass-dark); -webkit-backdrop-filter: blur(20px) saturate(160%); backdrop-filter: blur(20px) saturate(160%);
-    border-radius: 24px; border: 1px solid rgba(255,255,255,.08);
-    box-shadow: 0 14px 36px rgba(20,22,25,.32); animation: rb-rise var(--t-slow) var(--ease-out) .1s backwards; }
-  .tab { position: relative; flex: 1; height: 100%; display: flex; flex-direction: column; align-items: center;
-    justify-content: center; gap: 4px; background: none; border: 0; cursor: pointer;
-    color: rgba(255,255,255,.58); font-size: 10.5px; font-weight: 600; letter-spacing: .01em;
+  /* Tab bar, in the manner of the current iPhone apps: a slim pill of frosted
+     glass floating over the page, monochrome line icons, a soft capsule
+     that slides to the tab you are on, and Log Connect as the one spot of
+     yellow. Scrolling down it settles into a smaller pill (labels tucked
+     away); scrolling up brings it back. It never grows wider than a phone,
+     so on a tablet or in landscape it stays a pill in the middle. */
+  .tabbar { display: flex; position: fixed; z-index: 44; left: 50%; bottom: calc(10px + var(--safe-b));
+    width: min(calc(100% - 24px), 420px); height: var(--tab-h); padding: 5px; align-items: stretch; gap: 2px;
+    transform: translateX(-50%); border-radius: var(--r-pill);
+    background: rgba(252,251,248,.86);
+    -webkit-backdrop-filter: blur(22px) saturate(180%); backdrop-filter: blur(22px) saturate(180%);
+    border: 1px solid rgba(255,255,255,.7);
+    box-shadow: 0 0 0 .5px rgba(35,38,44,.10), 0 10px 30px rgba(35,38,44,.14), inset 0 1px 0 rgba(255,255,255,.8);
+    animation: rb-bar-in var(--t-slow) var(--ease-out) .1s backwards;
+    transition: width var(--t-slow) var(--ease-out), height var(--t-slow) var(--ease-out), box-shadow var(--t-med),
+      opacity var(--t-fast), transform var(--t-med) var(--ease-out); }
+  .tab { position: relative; z-index: 1; flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center;
+    justify-content: center; gap: 3px; padding: 0; background: none; border: 0; border-radius: var(--r-pill); cursor: pointer;
+    color: var(--ink-2); font-size: 10px; font-weight: 600; letter-spacing: .01em;
     transition: color var(--t-fast), transform var(--t-press) var(--ease-out); }
-  .tab .ico { width: 22px; height: 22px; transition: transform var(--t-med) var(--ease-out); }
-  .tab:active { transform: scale(.92); }
-  .tab[aria-current="page"] { color: var(--brand); }
-  .tab[aria-current="page"]::before { content: ""; position: absolute; top: 6px; width: 4px; height: 4px;
-    border-radius: 50%; background: var(--brand); }
-  .tab-dot { position: absolute; top: 9px; left: calc(50% + 6px); min-width: 17px; height: 17px; padding: 0 5px;
-    border-radius: 99px; background: rgba(255,255,255,.18); color: #fff; font: 700 10px/17px var(--font);
-    font-style: normal; text-align: center; }
+  .tab span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; line-height: 1.2;
+    transition: opacity var(--t-fast), max-height var(--t-med) var(--ease-out); max-height: 14px; }
+  .tab .ico { width: 23px; height: 23px; stroke-width: 1.8; transition: stroke-width var(--t-fast); }
+  .tab:active { transform: scale(.9); }
+  .tab[aria-current="page"] { color: var(--ink); }
+  .tab[aria-current="page"] .ico { stroke-width: 2.3; }
+  /* the capsule behind the current tab; app.js slides it from tab to tab */
+  .tab-glow { position: absolute; z-index: 0; top: 5px; bottom: 5px; left: 0; width: 0; border-radius: var(--r-pill);
+    background: rgba(35,38,44,.07); box-shadow: inset 0 0 0 .5px rgba(35,38,44,.05);
+    transition: transform 420ms var(--ease-out), width 420ms var(--ease-out); pointer-events: none; }
+  .tab-dot { position: absolute; top: 4px; left: calc(50% + 5px); min-width: 16px; height: 16px; padding: 0 4px;
+    border-radius: 99px; background: var(--ink-2); color: #fff; font: 700 9.5px/16px var(--font); font-style: normal;
+    text-align: center; box-shadow: 0 0 0 2px rgba(255,255,255,.9); }
   .tab-dot.alarm { background: var(--red); }
-  .tab-log { flex: none; width: 56px; height: 56px; margin: 0 6px; border-radius: 20px;
-    background: var(--brand); color: var(--brand-ink); box-shadow: 0 8px 20px rgba(242,190,20,.4); }
-  .tab-log .ico { width: 26px; height: 26px; stroke-width: 2.4; }
-  .tab-log:active { transform: scale(.9) rotate(90deg); }
-  :root[data-theme="dark"] .tabbar { background: rgba(35,38,44,.88); }
+  .tab-log { flex: 0 0 auto; width: 58px; color: var(--brand-ink); }
+  .tab-log::before { content: ""; position: absolute; inset: 50% auto auto 50%; width: 44px; height: 44px; margin: -22px 0 0 -22px;
+    border-radius: 50%; background: var(--brand); box-shadow: 0 4px 14px rgba(242,190,20,.45), inset 0 1px 0 rgba(255,255,255,.45);
+    transition: transform var(--t-med) var(--ease-out); }
+  .tab-log .ico { position: relative; width: 24px; height: 24px; stroke-width: 2.4; }
+  .tab-log:active { transform: none; }
+  .tab-log:active::before { transform: scale(.88); }
+  /* settled while reading: labels away, a smaller pill */
+  .tabbar.is-mini { height: 52px; width: min(calc(100% - 24px), 340px); }
+  .tabbar.is-mini .tab span { opacity: 0; max-height: 0; }
+  .tabbar.is-mini .tab-dot { top: 2px; }
+  :root[data-theme="dark"] .tabbar { background: rgba(36,39,45,.88); border-color: rgba(255,255,255,.09);
+    box-shadow: 0 0 0 .5px rgba(0,0,0,.4), 0 12px 32px rgba(0,0,0,.45), inset 0 1px 0 rgba(255,255,255,.06); }
+  :root[data-theme="dark"] .tab-glow { background: rgba(255,255,255,.11); box-shadow: none; }
+  :root[data-theme="dark"] .tab-dot { box-shadow: 0 0 0 2px rgba(36,39,45,.95); }
+  :root[data-theme="dark"] .tab-dot:not(.alarm) { background: #5A5F68; }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) .tabbar { background: rgba(36,39,45,.88); border-color: rgba(255,255,255,.09);
+      box-shadow: 0 0 0 .5px rgba(0,0,0,.4), 0 12px 32px rgba(0,0,0,.45), inset 0 1px 0 rgba(255,255,255,.06); }
+    :root:not([data-theme="light"]) .tab-glow { background: rgba(255,255,255,.11); box-shadow: none; }
+    :root:not([data-theme="light"]) .tab-dot { box-shadow: 0 0 0 2px rgba(36,39,45,.95); }
+    :root:not([data-theme="light"]) .tab-dot:not(.alarm) { background: #5A5F68; }
+  }
+  /* While typing, the keyboard is the bottom of the screen; the bar steps
+     aside rather than riding up on top of it. */
+  body:has(:is(input:not([type="checkbox"]):not([type="radio"]):not([type="date"]):not([type="hidden"]), textarea):focus) .tabbar {
+    opacity: 0; pointer-events: none; transform: translate(-50%, 20px); }
 
   .page-head h1 { font-size: 30px; }
 }
@@ -996,7 +1032,7 @@ table.data .strong { font-weight: 650; }
   animation: rb-modal-in var(--t-slow) var(--ease-out) backwards; }
 .modal.wide { width: min(1080px, 100%); }
 .modal-head { display: flex; align-items: center; gap: 12px; padding: 18px 20px 16px 24px; position: sticky; top: 0; z-index: 3;
-  background: color-mix(in srgb, var(--surface) 86%, transparent);
+  background: var(--surface); background: color-mix(in srgb, var(--surface) 86%, transparent);
   -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); border-bottom: 1px solid var(--line); }
 .modal-head h2 { font-size: 21px; flex: 1; line-height: 1.2; }
 .modal-head .icon-btn { width: 38px; height: 38px; border-radius: 50%; border: 0; box-shadow: none; background: var(--surface-sunk); font-size: 20px; }
@@ -1013,7 +1049,7 @@ table.data .strong { font-weight: 650; }
    bottom so it never scrolls out of reach. */
 @media (max-width: 980px) {
   .modal-root { place-items: end stretch; padding: 0; }
-  .modal, .modal.wide { width: 100%; max-height: calc(100dvh - 28px - var(--safe-t));
+  .modal, .modal.wide { width: 100%; max-height: calc(100vh - 28px); max-height: calc(100dvh - 28px - var(--safe-t));
     border-radius: var(--r-xl) var(--r-xl) 0 0; border-bottom: 0; animation-name: rb-sheet-in; }
   .modal::before { content: ""; position: sticky; top: 0; display: block; width: 40px; height: 5px;
     margin: 9px auto -14px; border-radius: 99px; background: var(--line-strong); z-index: 4; }
@@ -1022,8 +1058,8 @@ table.data .strong { font-weight: 650; }
   .modal-body { padding: 20px 20px calc(20px + var(--safe-b)); }
   .modal-body form > .modal-actions:last-child, .modal-body > .modal-actions:last-child,
   .modal-body > div > .modal-actions:last-child {
-    position: sticky; bottom: calc(-20px - var(--safe-b)); z-index: 3; margin: 24px -20px calc(-20px - var(--safe-b));
-    padding: 14px 20px calc(14px + var(--safe-b)); background: color-mix(in srgb, var(--surface) 90%, transparent);
+    position: sticky; bottom: 0; z-index: 3; margin: 24px -20px calc(-20px - var(--safe-b));
+    padding: 14px 20px calc(14px + var(--safe-b)); background: var(--surface); background: color-mix(in srgb, var(--surface) 90%, transparent);
     -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); }
   .modal-actions .btn { flex: 1; }
   .modal-root.is-closing .modal { animation-name: rb-sheet-out; }
@@ -1119,6 +1155,7 @@ button.kpi:active, .jstep:active, .fitcard:active, .action-item:active { transfo
 @keyframes rb-toast-in { from { opacity: 0; transform: translate(-50%, 16px) scale(.96); } }
 @keyframes rb-toast-out { to { opacity: 0; transform: translate(-50%, 10px) scale(.97); } }
 @keyframes rb-grow { from { transform: scaleX(0); } }
+@keyframes rb-bar-in { from { opacity: 0; transform: translate(-50%, 16px); } }
 @keyframes rb-wipe { from { clip-path: inset(0 100% 0 0); opacity: .4; } to { clip-path: inset(0 0 0 0); } }
 @keyframes rb-shake { 0%, 100% { transform: none; } 20% { transform: translateX(-5px); }
   40% { transform: translateX(5px); } 60% { transform: translateX(-3px); } 80% { transform: translateX(2px); } }
@@ -1131,7 +1168,7 @@ button.kpi:active, .jstep:active, .fitcard:active, .action-item:active { transfo
   .topbar, .tabbar, .modal-head, .modal-backdrop, .shell::after, .modal-actions {
     -webkit-backdrop-filter: none !important; backdrop-filter: none !important; }
   .topbar { background: var(--canvas); }
-  .tabbar { background: var(--charcoal); }
+  .tabbar { background: var(--surface); }
 }
 @media (prefers-contrast: more) {
   .card, .table-wrap, .kpi, .jstep, .fitcard, .action-item, .pick, .modal, .att, .att-card, .task { border-color: var(--line-strong); }
@@ -1142,4 +1179,84 @@ button.kpi:active, .jstep:active, .fitcard:active, .action-item:active { transfo
 @media (max-width: 980px) {
   input, select, textarea, .input, select.input, textarea.input, .filters select,
   .topbar-search input, .price-row .input { font-size: 16px; }
+}
+
+/* ============================================================ EVERY PHONE */
+/* Built against the whole range, not one model: a 280px fold cover screen,
+   320-360px Android and iPhone SE, 390-430px flagships, 480px+ large
+   phones and unfolded foldables, tablets, and phones on their side.
+   Sizes step with the width rather than jumping at one breakpoint. */
+@media (max-width: 980px) {
+  /* no double-tap zoom delay on anything tappable */
+  button, a, summary, label, input, select, textarea, [role="button"] { touch-action: manipulation; }
+  .main { padding-left: max(clamp(12px, 4vw, 16px), env(safe-area-inset-left));
+    padding-right: max(clamp(12px, 4vw, 16px), env(safe-area-inset-right));
+    padding-bottom: calc(var(--tab-h) + 32px + var(--safe-b)); }
+  .topbar { padding-left: max(clamp(12px, 4vw, 16px), env(safe-area-inset-left));
+    padding-right: max(8px, env(safe-area-inset-right)); }
+  .page-head h1 { font-size: clamp(25px, 7.6vw, 34px); }
+  .kpi-value { font-size: clamp(21px, 6.6vw, 27px); }
+  .kpis > .kpi:first-child .kpi-value { font-size: clamp(28px, 9vw, 36px); }
+  .att-val { font-size: clamp(17px, 5vw, 20px); }
+  .journey { margin-left: calc(-1 * clamp(12px, 4vw, 16px)); margin-right: calc(-1 * clamp(12px, 4vw, 16px));
+    padding-left: clamp(12px, 4vw, 16px); padding-right: clamp(12px, 4vw, 16px); }
+  .modal-body { padding-left: clamp(16px, 5vw, 20px); padding-right: clamp(16px, 5vw, 20px); }
+}
+/* compact phones: 320-360px wide */
+@media (max-width: 360px) {
+  .tabs button { font-size: 13px; padding: 0 8px; }
+  .seg button { padding: 0 11px; font-size: 13px; }
+  .kpi { padding: 14px; }
+  .kpi-label { font-size: 12px; }
+  .att-card { padding: 14px 14px 12px 16px; }
+  .choice button { padding: 11px; font-size: 13.5px; }
+  .appbar-brand { font-size: 17px; }
+  .btn { padding: 0 14px; }
+}
+/* the narrowest screens (a fold's cover display, under 300px): numbers
+   stack, the bar goes icon-only so all five fit with room for a thumb */
+@media (max-width: 300px) {
+  .kpis, .kpis-4 { grid-template-columns: 1fr; }
+  .kpis > .kpi:last-child:nth-child(even):not(:first-child) { grid-column: auto; }
+  .tabbar, .tabbar.is-mini { height: 54px; width: calc(100% - 16px); padding: 4px; }
+  .tab span { display: none; }
+  .tab-log { width: 50px; }
+  .tab-log::before { width: 40px; height: 40px; margin: -20px 0 0 -20px; }
+  .tab-glow { top: 4px; bottom: 4px; }
+  .choice, .choice.tight { grid-template-columns: 1fr; }
+  .att-card, .att-compact .att-card { flex-basis: 88%; }
+  .field-row { grid-template-columns: 1fr; }
+}
+/* large phones and unfolded foldables: more room, so more of it shows */
+@media (min-width: 560px) and (max-width: 980px) {
+  .kpis { grid-template-columns: repeat(3, 1fr); }
+  .kpis > .kpi:first-child { grid-column: 1 / -1; }
+  .kpis > .kpi:last-child:nth-child(even):not(:first-child) { grid-column: auto; }
+  .att-card { flex-basis: 46%; }
+  .att-compact .att-card { flex-basis: 300px; }
+  .choice { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
+}
+/* a phone on its side: the height is what is short, so the bars slim down
+   and sheets may use the whole height */
+@media (max-width: 980px) and (max-height: 500px) and (orientation: landscape) {
+  .topbar { height: calc(50px + var(--safe-t)); }
+  .tabbar, .tabbar.is-mini { height: 50px; width: min(380px, calc(100% - 24px)); bottom: calc(6px + var(--safe-b)); }
+  .tab span { display: none; }
+  .tab-log::before { width: 38px; height: 38px; margin: -19px 0 0 -19px; }
+  .main { padding-bottom: calc(50px + 24px + var(--safe-b)); }
+  .page-head { margin-bottom: 14px; }
+  .modal, .modal.wide { max-height: calc(100vh - 8px); max-height: calc(100dvh - 8px); }
+  .sidebar { max-height: calc(100vh - 16px); max-height: calc(100dvh - 16px); }
+  .nav-group { grid-template-columns: repeat(4, 1fr); }
+  .nav-item { min-height: 70px; }
+  .login { place-items: center; padding-top: 16px; }
+  .login-card { padding-top: 0; }
+}
+
+/* Where the browser cannot blur (or a low-power phone turns it off), glass
+   would just be see-through: every frosted surface goes solid instead. */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .topbar { background: var(--canvas); }
+  .tabbar { background: var(--surface) !important; }
+  .modal-head, .modal-body .modal-actions { background: var(--surface) !important; }
 }

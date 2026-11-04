@@ -94,11 +94,17 @@ RB.app = (function () {
         (b ? '<i class="tab-dot' + (k === 'day' ? ' alarm' : '') + '">' + U.count(b) + '</i>' : '') + '</button>';
     }
     var el = document.getElementById('tabbar');
-    el.innerHTML = tabs.slice(0, 2).map(tab).join('') +
+    var html = '<span class="tab-glow" aria-hidden="true"></span>' + tabs.slice(0, 2).map(tab).join('') +
       '<button type="button" class="tab tab-log" id="tab-log" aria-label="Log Connect">' + UI.icon('plus') + '</button>' +
       tabs.slice(2).map(tab).join('') +
       '<button type="button" class="tab" id="tab-more"' + (tabs.indexOf(current) === -1 ? ' aria-current="page"' : '') + '>' +
         UI.icon('grid') + '<span>More</span></button>';
+    // A save re-renders the page; the bar only redraws when what it shows changed.
+    if (html === el.getAttribute('data-html')) return;
+    var glow = el.querySelector('.tab-glow');
+    var from = glow && glow.style.width ? { x: glow.style.transform, w: glow.style.width } : null;
+    el.innerHTML = html;
+    el.setAttribute('data-html', html);
     el.querySelectorAll('[data-tab-route]').forEach(function (b) {
       b.addEventListener('click', function () { go(b.getAttribute('data-tab-route')); });
     });
@@ -106,6 +112,28 @@ RB.app = (function () {
     el.querySelector('#tab-more').addEventListener('click', function () {
       document.getElementById('shell').classList.add('nav-open');
     });
+    glow = el.querySelector('.tab-glow');
+    if (from) {
+      // start where the last capsule was, then slide to the new tab
+      glow.style.transition = 'none';
+      glow.style.transform = from.x; glow.style.width = from.w;
+      void glow.offsetWidth;
+      glow.style.transition = '';
+    }
+    placeGlow();
+  }
+
+  /* The capsule sits behind the current tab. Measured, not fixed, because
+   * the tabs change width with the screen and when the bar settles. */
+  function placeGlow(still) {
+    var el = document.getElementById('tabbar');
+    var glow = el.querySelector('.tab-glow'), on = el.querySelector('.tab[aria-current="page"]');
+    if (!glow) return;
+    if (!on || !on.offsetWidth) { glow.style.width = '0px'; return; }
+    if (still) glow.style.transition = 'none';
+    glow.style.transform = 'translateX(' + on.offsetLeft + 'px)';
+    glow.style.width = on.offsetWidth + 'px';
+    if (still) { void glow.offsetWidth; glow.style.transition = ''; }
   }
 
   /* A page change plays the entrance in app.css; a re-render of the same
@@ -628,6 +656,21 @@ RB.app = (function () {
     document.getElementById('search-results').addEventListener('click', function () {
       topbar.classList.remove('searching');
     });
+    // The bar settles into a smaller pill while reading down the page and
+    // comes back on the way up, as the iPhone apps' bars do.
+    var bar = document.getElementById('tabbar'), lastY = 0, ticking = false;
+    window.addEventListener('scroll', function () {
+      if (ticking) return;
+      ticking = true;
+      requestAnimationFrame(function () {
+        var y = window.scrollY;
+        if (y < 80) bar.classList.remove('is-mini');
+        else if (Math.abs(y - lastY) > 8) bar.classList.toggle('is-mini', y > lastY);
+        if (Math.abs(y - lastY) > 8 || y < 80) lastY = y;
+        ticking = false;
+      });
+    }, { passive: true });
+    if (window.ResizeObserver) new ResizeObserver(function () { placeGlow(true); }).observe(bar);
     // Both sheets can be pulled down to close on a phone.
     UI.dragToDismiss(document.getElementById('sidebar'), function () {
       document.getElementById('shell').classList.remove('nav-open');
