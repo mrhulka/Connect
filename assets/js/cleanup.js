@@ -400,5 +400,5 @@ RB.cleanup = (function () {
         } });
   }
 
-  return { open: open, read: read, plan: plan, after: after, totals: totals, changesFor: changesFor };
+  return { open: open, read: read, plan: plan, after: after, totals: totals, changesFor: changesFor, send: send, verify: verify };
 })();
