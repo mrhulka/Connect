@@ -199,6 +199,7 @@ RB.app = (function () {
           '<dt>Contacts</dt><dd>' + U.count(RB.store.contacts().length) + '</dd>' +
           '<dt>Stored in</dt><dd>Connected Backend API &amp; MySQL Database.</dd></dl>' +
           '<div class="row wrap" style="margin-top:16px">' +
+          '<button class="btn btn-primary" id="cleanup">Apply data clean-up</button>' +
           '<button class="btn" id="backup">Download backup</button>' +
           '<button class="btn btn-danger" id="reset">Reset to imported data</button>' +
           '</div>') +
@@ -240,6 +241,9 @@ RB.app = (function () {
           refresh();
         });
       }
+
+      var cleanupBtn = host.querySelector('#cleanup');
+      if (cleanupBtn) cleanupBtn.addEventListener('click', function () { RB.cleanup.open(); });
 
       var backupBtn = host.querySelector('#backup');
       if (backupBtn) {

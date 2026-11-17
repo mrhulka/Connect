@@ -50,10 +50,14 @@ RB.store = (function () {
     });
   }
 
+  var cleanedOut = [];
   function reconcileOfferings() {
     var dropped = {};
+    cleanedOut = state.opportunities.filter(function (o) { return o.status === 'Dropped'; });
     state.opportunities = state.opportunities.filter(function (o) {
-      if (RB.model.OFFERING_RETIRED[o.offering]) { dropped[o.id] = true; return false; }
+      // 'Dropped': taken out of the pipeline by a data clean-up. Kept on the
+      // server, counted nowhere here - the same treatment as a retired product.
+      if (RB.model.OFFERING_RETIRED[o.offering] || o.status === 'Dropped') { dropped[o.id] = true; return false; }
       var to = RB.model.offeringOf(o.offering);
       if (to !== o.offering) { o.renamedFrom = o.offering; o.offering = to; }
       return true;
@@ -270,6 +274,9 @@ RB.store = (function () {
     pricingTargets: function () { return state.pricingTargets || []; }, 
     savePricingTarget: savePricingTarget,                               
     removePricingTarget: removePricingTarget,
+    // deals a data clean-up took out: hidden everywhere, but the next clean-up
+    // must recognise them rather than mistake a neighbour for them
+    droppedOpportunities: function () { return cleanedOut; },
     schoolById: schoolById, opportunityById: opportunityById, contactById: contactById,
     userById: userById, contactsFor: contactsFor, opportunitiesFor: opportunitiesFor,
     connectsForSchool: connectsForSchool, findSchool: findSchool,

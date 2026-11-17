@@ -189,8 +189,12 @@ RB.model = (function () {
     var school = RB.store.schoolById(opp.schoolId);
 
     // Commercial journey: each value is the most recent one a Connect recorded.
+    // A deal size set on the deal itself (valueAt, e.g. by a data clean-up)
+    // outranks any connect logged before it; a connect logged after still wins.
+    var since = opp.valueAt || '';
+    var priced = since ? cs.filter(function (c) { return String(c.at || '') > since; }) : cs;
     var quoted = null, negotiated = null;
-    cs.forEach(function (c) {
+    priced.forEach(function (c) {
       if (c.commercial && c.commercial.quoted != null) quoted = c.commercial.quoted;
       if (c.commercial && c.commercial.negotiated != null) negotiated = c.commercial.negotiated;
     });
@@ -212,7 +216,7 @@ RB.model = (function () {
 
     /* Expected deal size, set on any connect, is the live commercial number. */
     var expected = null;
-    cs.forEach(function (c) { if (c.expectedValue != null) expected = c.expectedValue; });
+    priced.forEach(function (c) { if (c.expectedValue != null) expected = c.expectedValue; });
 
     var current = opp.closedValue != null ? opp.closedValue
       : negotiated != null ? negotiated

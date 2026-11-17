@@ -135,6 +135,34 @@ stuck, overdue, no-next, date-passed, quiet). `ceo.js` shows them as cards
 with a breakdown by kind: a grid on Business, a sideways rail on Sales,
 Market and Win. A card opens the school; See all opens the full list.
 
+## Data clean-up (Settings → Apply data clean-up)
+
+The sales team cleans the pipeline in Excel: they take the Business page's
+Excel export and, on its **Potential deals** tab, blank the deal size of
+deals that are not real, correct sizes, and type CLOSED (with the amount)
+against deals they have sold. The CEO uploads that file in Settings, sees
+every change and the new totals, and confirms. Code: `assets/js/cleanup.js`.
+
+- Blank or 0 deal size → the deal's `status` becomes `Dropped`. It is hidden
+  everywhere on load (`store.js`) but stays in the database; the school stays.
+- A different size → `initialPotential` is set and `valueAt` (a date-time) is
+  stamped; a connect logged before `valueAt` no longer overrides the size.
+- CLOSED with an amount → `status` Won, `closedValue`, `closedAt`, `salesYear`.
+
+Changes go through the normal `POST /api/sync` (`opportunity_add`). No
+connects are created. Rows are matched to deals by school name and location,
+then product, owner and original size; any row that cannot be pinned to
+exactly one deal is skipped and listed. Afterwards the tool reloads
+`/api/state` and checks each change stuck. Running it again with the same
+file changes nothing.
+
+**What the server must allow** — the tool reports it if not:
+
+| Field | Needed for | Note |
+|---|---|---|
+| `opportunities.status` = `"Dropped"` | removing deals | must not be an ENUM that rejects it |
+| `opportunities.valueAt` | changing a deal size | date-time, nullable |
+
 ## Sign-in
 
 Access codes are checked in the browser against the `pin` field on each user,
