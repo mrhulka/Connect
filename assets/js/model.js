@@ -167,6 +167,17 @@ RB.model = (function () {
     return 'Connected';
   }
 
+  /* The stage a connect put the deal at. Connects imported from the old sheet
+   * carry none, so read one off their response with the same rule the form
+   * pre-selects with - a school someone has spoken to is not an untouched
+   * New School. Never infers a close: only a rep can win, lose or park a deal. */
+  function connectStage(c) {
+    if (c.stage) return stageOf(c.stage);
+    if (!c.response && !c.mode) return null;
+    var s = suggestStage(c.response, c.mode);
+    return CLOSED[s] ? null : s;
+  }
+
   /* ========================================================= derivation ==== */
 
   function connectsFor(oppId) {
@@ -198,7 +209,7 @@ RB.model = (function () {
     /* Stage is whatever the most recent connect recorded, falling back to the
      * opportunity's own field for imported rows that have no connect stage. */
     var stageSet = null;
-    cs.forEach(function (c) { if (c.stage) stageSet = stageOf(c.stage); });
+    cs.forEach(function (c) { stageSet = connectStage(c) || stageSet; });
     stageSet = stageSet || stageOf(opp.stage) || 'New School';
     var stageRank = RANK[stageSet] != null ? RANK[stageSet] : 0;
     if (quoted != null && stageRank < RANK.Proposal) stageRank = RANK.Proposal;
@@ -257,7 +268,7 @@ RB.model = (function () {
       overdue: !!(nextAt && U.daysSince(nextAt.slice(0, 10)) > 0),
       blocker: last && last.blocker && last.blocker !== 'None' ? last.blocker : null,
       interest: last ? last.interest : null,
-      owner: opp.ownerKey || (school && school.ownerKey) || null
+      owner: opp.ownerKey || (school && school.ownerKey) || loggedBy(cs)
     };
 
     /* Stalled, per the four rules the CEO asked for. */
@@ -297,6 +308,17 @@ RB.model = (function () {
     return v;
   }
 
+  /* Imported deals can arrive with no owner on the deal or the school. The
+   * person who logged the first connect on it is working it, so it lands in
+   * their day instead of in nobody's. */
+  function loggedBy(cs) {
+    for (var i = 0; i < cs.length; i++) {
+      var u = RB.store.userById(cs[i].by);
+      if (u && u.ownerKey) return u.ownerKey;
+    }
+    return null;
+  }
+
   /* The school's first opportunity is the one the new-school flow created;
    * anything after it is an existing-school opportunity. */
   var firstOppCache = null;
@@ -312,7 +334,7 @@ RB.model = (function () {
   function stageMovedDaysAgo(cs) {
     var best = -1, movedAt = null;
     cs.forEach(function (c) {
-      var r = RANK[stageOf(c.stage)];
+      var r = RANK[connectStage(c)];
       if (r != null && r > best) { best = r; movedAt = c.at; }
     });
     if (!movedAt) return Infinity;
@@ -627,7 +649,7 @@ RB.model = (function () {
 
   function ownerOf(c) {
     var o = c.opportunityId && RB.store.opportunityById(c.opportunityId);
-    if (o && o.ownerKey) return o.ownerKey;
+    if (o) return view(o).owner;
     var s = RB.store.schoolById(c.schoolId);
     return s && s.ownerKey;
   }
@@ -1248,7 +1270,7 @@ RB.model = (function () {
   function stageChangedAt(cs, opp) {
     var best = -1, at = null;
     cs.forEach(function (c) {
-      var r = RANK[stageOf(c.stage)];
+      var r = RANK[connectStage(c)];
       if (r != null && r > best) { best = r; at = c.at; }
     });
     if (at) return at.slice(0, 10);
@@ -1260,7 +1282,7 @@ RB.model = (function () {
   function advancedIn(v, range) {
     var best = -1, moved = false;
     v.connects.forEach(function (c) {
-      var r = RANK[stageOf(c.stage)];
+      var r = RANK[connectStage(c)];
       if (r == null || r <= best) return;
       best = r;
       if (inRange(c.at, range)) moved = true;
