@@ -135,33 +135,28 @@ stuck, overdue, no-next, date-passed, quiet). `ceo.js` shows them as cards
 with a breakdown by kind: a grid on Business, a sideways rail on Sales,
 Market and Win. A card opens the school; See all opens the full list.
 
-## Data clean-up (Settings → Apply data clean-up)
+## Uploading business data (Settings → Upload Excel)
 
-The sales team cleans the pipeline in Excel: they take the Business page's
-Excel export and, on its **Potential deals** tab, blank the deal size of
-deals that are not real, correct sizes, and type CLOSED (with the amount)
-against deals they have sold. The CEO uploads that file in Settings, sees
-every change and the new totals, and confirms. Code: `assets/js/cleanup.js`.
+Settings reads an Excel export in the browser and sends the deals and
+connects to `POST /api/import/business-export`, then reloads `/api/state`.
+The server decides how rows are matched and stored.
 
-- Blank or 0 deal size → the deal's `status` becomes `Dropped`. It is hidden
-  everywhere on load (`store.js`) but stays in the database; the school stays.
-- A different size → `initialPotential` is set and `valueAt` (a date-time) is
-  stamped; a connect logged before `valueAt` no longer overrides the size.
-- CLOSED with an amount → `status` Won, `closedValue`, `closedAt`, `salesYear`.
+## Imported deals
 
-Changes go through the normal `POST /api/sync` (`opportunity_add`). No
-connects are created. Rows are matched to deals by school name and location,
-then product, owner and original size; any row that cannot be pinned to
-exactly one deal is skipped and listed. Afterwards the tool reloads
-`/api/state` and checks each change stuck. Running it again with the same
-file changes nothing.
+Rows from the old sheet arrive without a stage, often without a next-action
+date, and sometimes without an owner. `model.js` reads them so they still
+count everywhere, without changing the stored records:
 
-**What the server must allow** — the tool reports it if not:
+- A connect with no `stage` takes one from its response and mode, using the
+  same rule that pre-selects the connect form (`connectStage`). It never
+  infers Won, Lost or On Hold. A stage a rep chose always wins.
+- A deal with no `ownerKey` on it or its school belongs to whoever logged its
+  first connect (`loggedBy`).
+- Owners whose person was removed from Settings (e.g. `VIKAS`) still show on
+  the command centre; add the person back, with the same owner key, to put
+  those deals in someone's day.
 
-| Field | Needed for | Note |
-|---|---|---|
-| `opportunities.status` = `"Dropped"` | removing deals | must not be an ENUM that rejects it |
-| `opportunities.valueAt` | changing a deal size | date-time, nullable |
+`node tools/test_imported.js` checks both rules.
 
 ## Sign-in
 
