@@ -434,11 +434,15 @@ RB.ceo = (function () {
     var dims = { owner: 'By sales owner', region: 'By region', offering: 'By opportunity type' };
     var groups = M.performance(vs, perfDim, range);
     var date = dayDate || U.iso(U.today());
-    var day = M.dayActivity(date, F.apply);
+    /* The caller's work is the CEO's to see; the head of sales sees only the
+     * leads sent to him, so she is left out of his team day. */
+    var ceo = RB.auth.can('ceoDashboard');
+    var notCaller = function (r) { return ceo || r.user.role !== 'caller'; };
+    var day = M.dayActivity(date, F.apply).filter(notCaller);
     var nextDay = U.addDays(date, 1);
     /* "What the team did" for everyone, or one person picked from the chips. */
     var mine = function (r) { return !dayWho || r.user.id === dayWho; };
-    var lined = M.dayActivity(nextDay, F.apply).filter(mine).reduce(function (a, r) { return a.concat(r.planned); }, []);
+    var lined = M.dayActivity(nextDay, F.apply).filter(notCaller).filter(mine).reduce(function (a, r) { return a.concat(r.planned); }, []);
     /* How many connects were logged on each day, so the calendar shows where
      * the activity actually is instead of making the CEO guess a date. */
     var keep = {};
@@ -446,6 +450,7 @@ RB.ceo = (function () {
     var perDay = {}, lastActive = null;
     RB.store.connects().forEach(function (c) {
       if (!c.at || (c.opportunityId && !keep[c.opportunityId] && !RB.store.leadById(c.opportunityId))) return;
+      if (!ceo && RB.store.leadById(c.opportunityId)) return;
       var d = c.at.slice(0, 10);
       perDay[d] = (perDay[d] || 0) + 1;
       if (!lastActive || d > lastActive) lastActive = d;
@@ -462,7 +467,7 @@ RB.ceo = (function () {
       teamTargets() +
 
       /* The Robobox Caller: the calls, and what they turned into. */
-      RB.store.users().filter(function (u) { return u.role === 'caller'; }).map(function (u) {
+      RB.store.users().filter(function (u) { return ceo && u.role === 'caller'; }).map(function (u) {
         return '<div class="section-title">' + U.esc(u.name) + '</div><div data-caller="' + U.esc(u.id) + '">' +
           RB.views.callerCard(u.id, callRange) + '</div>';
       }).join('') +

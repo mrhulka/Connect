@@ -39,6 +39,7 @@ RB.views = (function () {
 
   /* ============================================================ MY DAY ==== */
   function myDay(host) {
+    if (me().role === 'caller') return callerDay(host);
     var key = myKey();
     var sc = M.scorecard({ ownerKey: key, range: M.RANGES()['Today'] });
     var all = M.scorecard({ ownerKey: key });
@@ -120,47 +121,114 @@ RB.views = (function () {
     });
   }
 
-  /* ============================================================ CALLS ==== */
-  /* The Robobox Caller's page: what is due back to her, what she logged
-   * today, and what her calls have turned into. */
-  var callRange = 'Today';
-
-  function myCalls(host) {
+  /* ============================================================ CALLER ==== */
+  /* The Robobox Caller sees five things: her day (the schools to call back),
+   * her connects, the sales team's calendar, her score, and Settings. */
+  function callerDay(host) {
     var me = RB.auth.user(), today = U.iso(U.today());
-    var ts = M.tasks(me.id);
-    var due = ts.filter(function (t) { return t.bucket !== 'Upcoming'; });
-    var later = ts.filter(function (t) { return t.bucket === 'Upcoming'; });
+    var b = { Overdue: [], Today: [], Upcoming: [] };
+    M.tasks(me.id).forEach(function (t) { b[t.bucket].push(t); });
     var calls = RB.store.connects().filter(function (c) { return c.by === me.id && c.at && c.at.slice(0, 10) === today; });
-
-    host.innerHTML = UI.head('Hello, ' + me.name, U.fmtDate(today) + ' · new schools only. Existing schools are the sales team\'s.') +
-      '<div class="row wrap" style="margin-bottom:18px"><button class="btn btn-primary btn-lg" id="log-call">' +
-        UI.icon('plus') + 'Log a call</button></div>' +
-      '<div class="section-title">Call back · ' + due.length + ' due</div>' +
-      (due.length ? taskList(due) : '<div class="empty">No callbacks due.</div>') +
-      (later.length ? '<div class="section-title">Coming up</div>' + taskList(later.slice(0, 8)) : '') +
-      '<div class="section-title">Today\'s calls · ' + calls.length + '</div>' +
-      (activity(calls, true) || '<div class="empty">No calls logged yet today.</div>') +
-      '<div class="section-title">My scorecard</div>' + callerCard(me.id, callRange);
-    host.querySelector('#log-call').addEventListener('click', function () { RB.connectForm.open(); });
-    bindRange(host, function (r) { callRange = r; myCalls(host); });
+    host.innerHTML = UI.head('Hello, ' + me.name, U.fmtDate(today) + ' · the schools to call back.') +
+      UI.stats([
+        UI.stat({ cls: 'stat-hero', label: 'Call back today', value: U.count(b.Today.length) }),
+        UI.stat({ label: 'Overdue', value: U.count(b.Overdue.length), cls: b.Overdue.length ? 'stat-red' : '',
+                  footBad: !!b.Overdue.length, foot: b.Overdue.length ? 'call these first' : 'all clear' }),
+        UI.stat({ label: 'Calls today', value: U.count(calls.length) })
+      ]) +
+      (b.Overdue.length ? '<div class="section-title">Overdue</div>' + taskList(b.Overdue) : '') +
+      '<div class="section-title">Today</div>' +
+      (b.Today.length ? taskList(b.Today) : '<div class="empty">No call-backs today.</div>') +
+      (b.Upcoming.length ? '<div class="section-title">Coming up</div>' + taskList(b.Upcoming) : '');
     bindTasks(host);
   }
 
-  /* One caller's numbers for a period: effort, then what it became. Shared
-   * with the CEO's Sales tab so both read the same figures. */
-  function callerCard(userId, rangeKey) {
+  function myCalls(host) {
+    var me = RB.auth.user(), today = U.iso(U.today()), weekAgo = U.addDays(today, -6);
+    var mine = RB.store.connects().filter(function (c) { return c.by === me.id && c.at; });
+    var todays = mine.filter(function (c) { return c.at.slice(0, 10) === today; });
+    var week = mine.filter(function (c) { var d = c.at.slice(0, 10); return d < today && d >= weekAgo; });
+    host.innerHTML = UI.head('Connects', 'Calls to new schools. Existing schools are the sales team\'s.') +
+      '<div class="row wrap" style="margin-bottom:18px"><button class="btn btn-primary btn-lg" id="log-call">' +
+        UI.icon('plus') + 'Log a call</button></div>' +
+      '<div class="section-title">Today · ' + todays.length + '</div>' +
+      (activity(todays, true) || '<div class="empty">No calls logged yet today.</div>') +
+      (week.length ? '<div class="section-title">Earlier this week · ' + week.length + '</div>' + activity(week, true) : '');
+    host.querySelector('#log-call').addEventListener('click', function () { RB.connectForm.open(); });
+    bindTasks(host);
+  }
+
+  /* The diary of the people her leads go to, so a meeting is booked into a
+   * free slot. Times and what is booked; not the deals behind them. */
+  var teamWho = '', teamDay = null, teamMonth = null;
+
+  function teamCalendar(host) {
+    var today = U.iso(U.today()), day = teamDay || today, month = teamMonth || day.slice(0, 7);
+    var people = [];
+    Object.keys(M.LEAD_ROUTE).forEach(function (r) {
+      M.leadOwners(r).forEach(function (u) { if (people.indexOf(u) === -1) people.push(u); });
+    });
+    var shown = teamWho ? people.filter(function (u) { return u.id === teamWho; }) : people;
+    var byDay = {};
+    shown.forEach(function (u) {
+      M.tasks(u.id).forEach(function (t) {
+        if (!t.due) return;
+        var k = t.due.slice(0, 10);
+        (byDay[k] = byDay[k] || []).push({ u: u, t: t });
+      });
+    });
+    var items = U.sortBy(byDay[day] || [], function (x) { return x.t.due; }, 'asc');
+    host.innerHTML = UI.head('Sales calendar', 'What the sales team has booked, so you can fix meetings in a free slot.') +
+      '<div class="tabs">' + [{ id: '', name: 'Everyone' }].concat(people).map(function (u) {
+        return '<button type="button" data-who="' + U.esc(u.id) + '" aria-pressed="' + (teamWho === u.id) + '">' + U.esc(u.name) + '</button>';
+      }).join('') + '</div>' +
+      '<div class="grid grid-2">' +
+        UI.card('Month', 'The number on a day is how much is booked',
+          UI.monthGrid({ month: month, selected: day, get: function (iso) {
+            var n = (byDay[iso] || []).length;
+            return { n: n, title: n ? n + ' booked' : 'free' };
+          } })) +
+        UI.card(U.fmtDate(day) + (day === today ? ' · today' : ''), items.length ? items.length + ' booked' : 'Nothing booked',
+          items.length ? items.map(function (x) {
+            return '<div class="task"><div class="task-main"><strong>' + U.esc(x.t.due.slice(11, 16)) + ' · ' + U.esc(x.u.name) + '</strong>' +
+              '<small>' + U.esc(x.t.leadId ? (x.t.lead.last.nextAction || 'Meeting') + ' (new lead)' : String(x.t.title).split(' — ')[0]) + '</small></div></div>';
+          }).join('') : '<div class="cal-empty">Everyone shown is free this day.</div>') +
+      '</div>';
+    host.querySelectorAll('[data-who]').forEach(function (b) {
+      b.addEventListener('click', function () { teamWho = b.getAttribute('data-who'); teamCalendar(host); });
+    });
+    UI.bindMonthGrid(host,
+      function (d) { teamDay = d; teamMonth = d.slice(0, 7); teamCalendar(host); },
+      function (n) { teamMonth = U.shiftMonth(month, n); teamCalendar(host); });
+  }
+
+  var callRange = 'This month';
+  function callerScore(host) {
+    host.innerHTML = UI.head('My score', 'What your calls turned into.') + callerCard(RB.auth.user().id, callRange, true);
+    bindRange(host, function (r) { callRange = r; callerScore(host); });
+  }
+
+  /* One caller's numbers for a period. Her own page shows the conversions
+   * only; the CEO's Sales tab shows the full picture. */
+  function callerCard(userId, rangeKey, conversionsOnly) {
     var s = M.callerScore(userId, M.RANGES()[rangeKey]);
+    var pct = function (a, b) { return b ? Math.round(a / b * 100) + '% of ' : ''; };
     var stat = function (label, value, foot, cls) {
       return UI.stat({ small: true, label: label, value: value, foot: foot, cls: cls || '' });
     };
-    return rangeBar(rangeKey) + UI.stats([
-      stat('Calls', U.count(s.calls), U.count(s.schools) + ' schools', 'stat-hero'),
-      stat('Meetings fixed', U.count(s.meetings), s.meetingRate == null ? '—' : Math.round(s.meetingRate) + '% of calls', 'stat-brand'),
+    var conv = [
+      stat('Meetings fixed', U.count(s.meetings), pct(s.meetings, s.calls) + U.count(s.calls) + ' calls', 'stat-hero'),
       stat('Sent to sales', U.count(s.sent), 'leads handed over'),
+      stat('Taken by sales', U.count(s.taken), pct(s.taken, s.sent) + 'leads sent'),
+      stat('Won', U.count(s.won), pct(s.won, s.taken) + 'leads taken', 'stat-brand')
+    ];
+    return rangeBar(rangeKey) + UI.stats(conversionsOnly ? conv : [
+      stat('Calls', U.count(s.calls), U.count(s.schools) + ' schools', 'stat-hero')
+    ].concat(conv.slice(0, 3)).concat([
+      stat('Won', U.count(s.won), ''),
       stat('Call back', U.count(s.callbacks), 'to confirm in a few days'),
-      stat('Rejected', U.count(s.rejected), ''),
-      stat('Taken by sales', U.count(s.taken), U.count(s.won) + ' won')
-    ].concat(RB.auth.can('money') ? [stat('Business in Play', U.money(s.pipeline), 'from these schools')] : []));
+      stat('Rejected', U.count(s.rejected), '')
+    ]).concat(RB.auth.can('money') ? [stat('Business in Play', U.money(s.pipeline), 'from these schools')] : []));
   }
 
   /* ============================================================ LEADS ==== */
@@ -171,7 +239,8 @@ RB.views = (function () {
   function leads(host) {
     var me = RB.auth.user();
     var all = M.leads();
-    var everyone = me.role === 'caller' || RB.auth.can('teamBoard');
+    // The sales team sees only the leads sent to them; the CEO sees them all.
+    var everyone = RB.auth.can('ceoDashboard');
     var mine = all.filter(function (l) {
       return l.state === 'With sales' && l.owners.some(function (u) { return u.id === me.id; });
     });
@@ -580,6 +649,6 @@ RB.views = (function () {
   return {
     myDay: myDay, myTasks: myTasks, myCalendar: myCalendar, myScorecard: myScorecard,
     mySchools: mySchools, school: school, activity: activity, bindActivity: bindTasks,
-    myCalls: myCalls, leads: leads, callerCard: callerCard
+    myCalls: myCalls, leads: leads, callerCard: callerCard, teamCalendar: teamCalendar, callerScore: callerScore
   };
 })();

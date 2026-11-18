@@ -91,6 +91,10 @@ RB.store = (function () {
   var users = function () { return state.users; };
   var leads = function () { return state.leads || []; };
   var leadById = function (id) { return id ? byId(leads(), id) : null; };
+  /* A school the caller set up that no salesperson has taken yet. */
+  var isLeadSchool = function (id) {
+    return leads().some(function (l) { return l.schoolId === id; }) && !opportunitiesFor(id).length;
+  };
   var meta = function () { return state.meta; };
 
   function byId(list, id) {
@@ -344,7 +348,7 @@ RB.store = (function () {
     savePricingTarget: savePricingTarget,                               
     removePricingTarget: removePricingTarget,
     schoolById: schoolById, opportunityById: opportunityById, contactById: contactById,
-    userById: userById, leads: leads, leadById: leadById, addLead: addLead, takeLead: takeLead, contactsFor: contactsFor, opportunitiesFor: opportunitiesFor,
+    userById: userById, leads: leads, leadById: leadById, isLeadSchool: isLeadSchool, addLead: addLead, takeLead: takeLead, contactsFor: contactsFor, opportunitiesFor: opportunitiesFor,
     connectsForSchool: connectsForSchool, findSchool: findSchool,
     addUser: addUser, updateUser: updateUser, removeUser: removeUser,
     addSchool: addSchool, addContact: addContact, addOpportunity: addOpportunity,

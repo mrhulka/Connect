@@ -84,7 +84,8 @@ RB.connectForm = (function () {
             var items = M.calendar(u.id, date, 1)[0].items;
             return '<div><strong>' + U.esc(u.name) + '</strong> on ' + U.esc(U.fmtDate(date)) + ': ' +
               (items.length ? items.map(function (t) {
-                return U.esc((t.due ? t.due.slice(11, 16) + ' ' : '') + t.title);
+                // Times and what is booked, not the deals behind them.
+                return U.esc((t.due ? t.due.slice(11, 16) + ' ' : '') + (t.leadId ? 'Meeting (new lead)' : String(t.title).split(' — ')[0]));
               }).join(' · ') : '<span class="muted">nothing booked</span>') + '</div>';
           }).join('') + '</div>';
         }
@@ -202,6 +203,11 @@ RB.connectForm = (function () {
           var hit = t.length > 2 && RB.store.schools().filter(function (s) {
             return s.name.toLowerCase().indexOf(t.toLowerCase()) !== -1;
           })[0];
+          if (hit && RB.store.isLeadSchool(hit.id)) {
+            dupe.innerHTML = '<div class="prev-connect"><div class="pc-label">A Robobox Caller lead</div>' +
+              U.esc(hit.name) + ' was set up by the Robobox Caller. If it was sent to you, take it from Leads.</div>';
+            return;
+          }
           dupe.innerHTML = hit
             ? '<div class="prev-connect"><div class="pc-label">Already on file</div>' +
             U.esc(hit.name) + ' — ' + U.esc(hit.location || '') +
@@ -668,6 +674,8 @@ RB.connectForm = (function () {
           var t = q.value.trim().toLowerCase();
           host.querySelector('#lbl').textContent = t ? 'Matches' : 'Recent';
           draw(t ? RB.store.schools().filter(function (s) {
+            // A lead's school is taken from Leads, not picked here.
+            if (RB.store.isLeadSchool(s.id)) return false;
             return (s.name + ' ' + (s.location || '')).toLowerCase().indexOf(t) !== -1;
           }).slice(0, 20) : recent);
         }, 140));

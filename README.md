@@ -168,7 +168,11 @@ callback, on her own list); anything else goes to the region's salespeople
 (`M.LEAD_ROUTE`, matched on first name). Leads, tasks and calendars show it
 to all of them; the first to take it gets a New School Connect pre-filled on
 the same school, and saving turns the lead into their deal (status `Open`,
-owner set), with her calls already on it. Sales can no longer pick Call on a
+owner set), with her calls already on it. The caller sees only My day (her
+call-backs), Connects (her calls), the Sales calendar (what the people her
+leads go to have booked), My score (conversions) and Settings. The sales team
+and the head of sales see none of her work beyond the leads sent to them;
+the CEO sees all of it. Sales can no longer pick Call on a
 New School Connect. The server's `opportunities.status` must accept `"Lead"`
 and `users.role` must accept `"caller"`.
 

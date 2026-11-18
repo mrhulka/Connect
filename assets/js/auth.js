@@ -30,7 +30,7 @@ RB.auth = (function () {
    * Robobox Caller's page - the one role that calls new schools. */
   var PERMISSIONS = {
     caller: {
-      scope: 'own', sell: false, leads: true, calls: true,
+      scope: 'own', sell: false, leads: false, calls: true,
       ceoDashboard: false, teamBoard: false, money: false, teamRollup: false,
       exportOwn: false, exportAll: false, editAny: false, manageSettings: false
     },

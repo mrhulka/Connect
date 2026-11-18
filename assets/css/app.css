@@ -327,7 +327,9 @@ body:has(> #login[hidden]):has(> #shell[hidden])::before {
 
   /* The rail becomes a sheet that rises from the bottom edge. */
   .sidebar { position: fixed; z-index: 50; left: 8px; right: 8px; top: auto; bottom: 8px;
-    height: auto; max-height: calc(100vh - 80px); max-height: calc(100dvh - 64px - var(--safe-t)); padding: 26px 14px calc(14px + var(--safe-b));
+    /* Never full height: a band of page stays above it to tap to close. */
+    height: auto; max-height: 72vh; max-height: 72dvh; overflow-y: auto; overscroll-behavior: contain;
+    padding: 26px 14px calc(14px + var(--safe-b));
     border-radius: var(--r-xl); box-shadow: var(--shadow-2); touch-action: pan-y;
     transform: translateY(calc(100% + 24px)); visibility: hidden;
     transition: transform var(--t-slow) var(--ease-out), visibility 0s linear var(--t-slow); }

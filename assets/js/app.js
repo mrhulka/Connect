@@ -8,11 +8,15 @@ RB.app = (function () {
   var current = null;
 
   var ROUTES = {
-    'calls':     { label: 'My calls',      icon: UI.icon('phone'), group: 'Call', need: 'calls', render: RB.views.myCalls },
-    'day':       { label: 'My day',        icon: UI.icon('day'), group: 'Sell', need: 'sell', render: RB.views.myDay },
+    'day':       { label: 'My day',        icon: UI.icon('day'), group: 'Sell', render: RB.views.myDay },
+    /* The Robobox Caller's own pages: her calls, the sales team's diary for
+     * booking meetings, and what her calls converted into. */
+    'calls':     { label: 'Connects',      icon: UI.icon('phone'), group: 'Sell', need: 'calls', render: RB.views.myCalls },
+    'teamcal':   { label: 'Sales calendar', icon: UI.icon('calendar'), group: 'Sell', need: 'calls', render: RB.views.teamCalendar },
+    'score':     { label: 'My score',      icon: UI.icon('scorecard'), group: 'Sell', need: 'calls', render: RB.views.callerScore },
     'leads':     { label: 'Leads',         icon: UI.icon('leads'), group: 'Sell', need: 'leads', render: RB.views.leads },
     'tasks':     { label: 'My tasks',      icon: UI.icon('tasks'), group: 'Sell', need: 'sell', render: RB.views.myTasks },
-    'calendar':  { label: 'My calendar',   icon: UI.icon('calendar'), group: 'Sell',       render: RB.views.myCalendar },
+    'calendar':  { label: 'My calendar',   icon: UI.icon('calendar'), group: 'Sell', need: 'sell', render: RB.views.myCalendar },
     'schools':   { label: 'My schools',    icon: UI.icon('schools'), group: 'Sell', need: 'sell', render: RB.views.mySchools },
     'scorecard': { label: 'My performance', icon: UI.icon('scorecard'), group: 'Sell', need: 'sell', render: RB.views.myScorecard },
 
@@ -34,7 +38,7 @@ RB.app = (function () {
     return !!route && (!route.need || RB.auth.can(route.need));
   }
   function defaultRoute() {
-    return RB.auth.can('ceoDashboard') ? 'business' : RB.auth.user().role === 'caller' ? 'calls' : 'day';
+    return RB.auth.can('ceoDashboard') ? 'business' : 'day';
   }
 
   function nav() {
@@ -48,13 +52,13 @@ RB.app = (function () {
     if (RB.auth.can('ceoDashboard')) {
       badges.business = M.needsAttention(M.views(), M.fitModel(M.views())).length;
     }
-    var groups = {};
+    var groups = {}, u = RB.auth.user();
     Object.keys(ROUTES).forEach(function (k) {
       if (!allowed(k)) return;
-      (groups[ROUTES[k].group] = groups[ROUTES[k].group] || []).push(k);
+      var g = u.role === 'caller' && ROUTES[k].group === 'Sell' ? 'Calls' : ROUTES[k].group;
+      (groups[g] = groups[g] || []).push(k);
     });
 
-    var u = RB.auth.user();
     var host = document.getElementById('sidebar');
     host.innerHTML =
       '<div class="rail-brand"><img class="logo" src="assets/img/robobox-mark.webp" alt="" width="160" height="160">' +
@@ -88,11 +92,10 @@ RB.app = (function () {
    * most, Log Connect raised in the middle, and More for everything else -
    * which opens the same rail as a sheet. Same routes, same permissions. */
   function tabbar(badges) {
-    var want = RB.auth.user().role === 'caller' ? ['calls', 'leads', 'calendar']
-      : RB.auth.can('ceoDashboard') ? ['business', 'sales', 'schools']
-      : RB.auth.can('teamBoard') ? ['day', 'sales', 'schools'] : ['day', 'leads', 'schools'];
+    var want = RB.auth.user().role === 'caller' ? ['day', 'calls', 'teamcal']
+      : RB.auth.can('ceoDashboard') ? ['business', 'sales', 'schools'] : ['day', 'tasks', 'leads'];
     var tabs = want.filter(allowed);
-    var short = { calls: 'Calls', calendar: 'Calendar', day: 'Today', tasks: 'Tasks', schools: 'Schools', business: 'Business', sales: 'Sales' };
+    var short = { calls: 'Connects', teamcal: 'Calendar', leads: 'Leads', calendar: 'Calendar', day: 'Today', tasks: 'Tasks', schools: 'Schools', business: 'Business', sales: 'Sales' };
     function tab(k) {
       var b = badges[k];
       return '<button type="button" class="tab" data-tab-route="' + k + '"' +
@@ -117,7 +120,7 @@ RB.app = (function () {
     });
     el.querySelector('#tab-log').addEventListener('click', function () { RB.connectForm.open(); });
     el.querySelector('#tab-more').addEventListener('click', function () {
-      document.getElementById('shell').classList.add('nav-open');
+      document.getElementById('shell').classList.toggle('nav-open');
     });
     glow = el.querySelector('.tab-glow');
     if (from) {
@@ -215,6 +218,7 @@ RB.app = (function () {
           'Users and prices are not changed.</p>') +
         '</div>' +
         '<div class="section-title">Security</div>' + passwordCard() +
+        '<div class="section-title">Appearance</div>' + themeCard() +
         '<div class="section-title">Sales team</div>' + teamCard() +
         '<div class="section-title">Price list</div>' + pricingCard() +
         '<div class="section-title">Monthly targets</div>' + targetsCard();
@@ -226,13 +230,17 @@ RB.app = (function () {
           '<dt>Role</dt><dd>' + U.esc(u ? RB.auth.roleLabel(u.role) : '—') + '</dd>' +
           '<dt>Email</dt><dd>' + U.esc(u ? u.email : '—') + '</dd></dl>') +
         '</div>' +
-        '<div class="section-title">Security</div>' + passwordCard();
+        '<div class="section-title">Security</div>' + passwordCard() +
+        '<div class="section-title">Appearance</div>' + themeCard();
     }
 
     host.innerHTML = html;
 
     // Bind event handlers conditionally based on what rendered
     bindPassword(host);
+    host.querySelectorAll('[data-theme-pick]').forEach(function (b) {
+      b.addEventListener('click', function () { setTheme(b.getAttribute('data-theme-pick')); settings(host); });
+    });
 
     if (isCeo) {
       bindPricing(host);
@@ -635,6 +643,15 @@ RB.app = (function () {
     });
   }
 
+  /* How the website looks: light, dark, or whatever the phone is set to. */
+  function themeCard() {
+    var now = document.documentElement.getAttribute('data-theme') || 'auto';
+    return UI.card('Look of the website', 'Saved on this device.',
+      '<div class="seg">' + [['light', 'Light'], ['dark', 'Dark'], ['auto', 'Same as my phone']].map(function (t) {
+        return '<button type="button" data-theme-pick="' + t[0] + '" aria-pressed="' + (t[0] === now) + '">' + t[1] + '</button>';
+      }).join('') + '</div>');
+  }
+
   function passwordCard() {
     return UI.card('Change Password', 'Update your account access code / password.',
       '<form id="change-password-form">' +
@@ -711,8 +728,10 @@ RB.app = (function () {
       var q = input.value.trim().toLowerCase();
       if (q.length < 2) { panel.hidden = true; return; }
       var key = RB.auth.user().role === 'sales' ? RB.auth.user().ownerKey : null;
+      var ceo = RB.auth.can('ceoDashboard');
       var hits = RB.store.schools().filter(function (s) {
         if (key && s.ownerKey !== key) return false;
+        if (!ceo && RB.store.isLeadSchool(s.id)) return false;   // the caller's, until someone takes it
         return (s.name + ' ' + (s.location || '')).toLowerCase().indexOf(q) !== -1;
       }).slice(0, 10);
       panel.innerHTML = hits.length ? hits.map(function (s) {
@@ -746,6 +765,16 @@ RB.app = (function () {
     document.getElementById('shell').hidden = false;
     var h = (location.hash || '').replace('#/', '');
     go(allowed(h) ? h : defaultRoute());
+  }
+
+  function setTheme(next) {
+    var flip = function () {
+      if (next === 'auto') document.documentElement.removeAttribute('data-theme');
+      else document.documentElement.setAttribute('data-theme', next);
+    };
+    if (document.startViewTransition && !matchMedia('(prefers-reduced-motion: reduce)').matches) document.startViewTransition(flip);
+    else flip();
+    try { if (next === 'auto') localStorage.removeItem('robobox.theme'); else localStorage.setItem('robobox.theme', next); } catch (e) {}
   }
 
   function initTheme() {
