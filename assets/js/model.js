@@ -378,7 +378,78 @@ RB.model = (function () {
           view: v
         };
       })
+      .concat(leadTasks(me))
       .sort(function (a, b) { return String(a.due || '9999').localeCompare(String(b.due || '9999')); });
+  }
+
+  /* ============================================================== leads ==== */
+  /* The Robobox Caller calls new schools; a call that is not a rejection or a
+   * callback goes to the salespeople of the school's region. Matched on first
+   * name, so a person added later in Settings is picked up with no change. */
+  var LEAD_ROUTE = {
+    'KDMC': ['Suraj'], 'Central': ['Sid', 'Ayush'], 'Western': ['Sohan', 'Soham'],
+    'Navi Mumbai': ['Hemal'], 'Pune': ['Pramod', 'Gaurav']
+  };
+  var CALLBACK = 'To confirm in a few days';
+
+  function leadOwners(region) {
+    var names = (LEAD_ROUTE[region] || []).map(function (n) { return n.toLowerCase(); });
+    return RB.store.users().filter(function (u) {
+      return u.ownerKey && names.indexOf(String(u.name || '').split(/\s+/)[0].toLowerCase()) !== -1;
+    });
+  }
+
+  function leadView(lead) {
+    var cs = connectsFor(lead.id), last = cs[cs.length - 1] || {};
+    var school = RB.store.schoolById(lead.schoolId) || {};
+    var state = last.response === 'Rejected' ? 'Rejected' : last.response === CALLBACK ? 'Callback' : 'With sales';
+    return {
+      lead: lead, school: school, connects: cs, last: last, state: state,
+      owners: state === 'With sales' ? leadOwners(school.region) : [],
+      contact: last.contactId ? RB.store.contactById(last.contactId) : null,
+      due: last.nextActionAt || null, caller: RB.store.userById(last.by)
+    };
+  }
+
+  function leads() { return RB.store.leads().map(leadView); }
+
+  /* For a salesperson: the meetings on leads routed to them. For the caller:
+   * her callbacks. Either way a lead task stops once someone acts on it. */
+  function leadTasks(me) {
+    return leads().filter(function (l) {
+      if (!me) return l.state !== 'Rejected';
+      if (l.state === 'Callback') return l.last.by === me.id;
+      return l.state === 'With sales' && l.owners.some(function (u) { return u.id === me.id; });
+    }).map(function (l) {
+      var days = l.due ? U.daysSince(l.due.slice(0, 10)) : null;
+      return {
+        id: 'LEAD-' + l.lead.id, lead: l, leadId: l.lead.id, schoolId: l.school.id,
+        title: (l.state === 'Callback' ? 'Call back' : (l.last.nextAction || 'New lead')) + ' — ' + (l.school.name || ''),
+        offering: l.state === 'Callback' ? 'Callback' : 'New lead · ' + (l.last.response || ''),
+        value: null, due: l.due,
+        bucket: days === null ? 'Upcoming' : days > 0 ? 'Overdue' : days === 0 ? 'Today' : 'Upcoming'
+      };
+    });
+  }
+
+  /* What the caller's calls turned into, for a period. A lead counts as taken
+   * once a salesperson has made it a deal; it then has the caller's call on it. */
+  function callerScore(userId, range) {
+    var all = RB.store.connects().filter(function (c) { return c.by === userId; });
+    var calls = all.filter(function (c) { return inRange(c.at, range); });
+    var by = function (r) { return calls.filter(function (c) { return c.response === r; }).length; };
+    var schools = U.uniq(calls.map(function (c) { return c.schoolId; }));
+    var deals = U.uniq(calls.map(function (c) { return c.opportunityId; }))
+      .map(function (id) { return RB.store.opportunityById(id); }).filter(Boolean).map(view);
+    var sent = calls.filter(function (c) { return c.response !== 'Rejected' && c.response !== CALLBACK; }).length;
+    return {
+      calls: calls.length, schools: schools.length,
+      meetings: by('Meeting Fixed'), rejected: by('Rejected'), callbacks: by(CALLBACK), sent: sent,
+      meetingRate: calls.length ? (by('Meeting Fixed') / calls.length) * 100 : null,
+      taken: deals.length, won: deals.filter(function (v) { return v.status === 'Won'; }).length,
+      pipeline: U.sum(deals.filter(inPlay), function (v) { return v.current || 0; }),
+      deals: deals
+    };
   }
 
   /* The calendar is the same list, grouped by day. No second source of truth. */
@@ -439,7 +510,7 @@ RB.model = (function () {
     // activity and pipeline on a filtered screen describe the same slice.
     var cs = RB.store.connects().filter(function (c) {
       if (!inRange(c.at, range)) return false;
-      if (c.opportunityId && !keep[c.opportunityId]) return false;
+      if (c.opportunityId && !keep[c.opportunityId] && !RB.store.leadById(c.opportunityId)) return false;
       if (!ownerKey) return true;
 
       // Match either by ownerKey or directly by user reference / ID
@@ -611,7 +682,7 @@ RB.model = (function () {
     var day = { from: dateISO, to: dateISO };
 
     var all = RB.store.connects().filter(function (c) {
-      return !c.opportunityId || keep[c.opportunityId];
+      return !c.opportunityId || keep[c.opportunityId] || !!RB.store.leadById(c.opportunityId);
     });
 
     return RB.store.users().filter(function (u) { return u.ownerKey; }).map(function (u) {
@@ -820,7 +891,7 @@ RB.model = (function () {
     vs.forEach(function (v) { keep[v.opp.id] = true; });
     var cs = RB.store.connects().filter(function (c) {
       if (!inRange(c.at, range)) return false;
-      if (c.opportunityId && !keep[c.opportunityId]) return false;
+      if (c.opportunityId && !keep[c.opportunityId] && !RB.store.leadById(c.opportunityId)) return false;
       var u = RB.store.userById(c.by);
       return u && u.ownerKey === ownerKey;
     });
@@ -1775,7 +1846,7 @@ RB.model = (function () {
   return {
     V: V, STAGES: STAGES, KIT_BANDS: KIT_BANDS,
     salesYears: salesYears, currentSalesYear: currentSalesYear,
-    OFFERING_ALIAS: OFFERING_ALIAS, OFFERING_RETIRED: OFFERING_RETIRED, offeringOf: offeringOf, RANK: RANK, CLOSED: CLOSED, suggestStage: suggestStage, inPlay: inPlay, DIMENSIONS: DIMENSIONS,
+    OFFERING_ALIAS: OFFERING_ALIAS, OFFERING_RETIRED: OFFERING_RETIRED, offeringOf: offeringOf, RANK: RANK, CLOSED: CLOSED, suggestStage: suggestStage, inPlay: inPlay, leads: leads, leadView: leadView, leadOwners: leadOwners, callerScore: callerScore, LEAD_ROUTE: LEAD_ROUTE, DIMENSIONS: DIMENSIONS,
     connectsFor: connectsFor, view: view, views: views, invalidate: invalidate,
     tasks: tasks, calendar: calendar, scorecard: scorecard, RANGES: RANGES,
     funnel: funnel, commercialFunnel: commercialFunnel, groupBy: groupBy, rollup: rollup,

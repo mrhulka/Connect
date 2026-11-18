@@ -427,7 +427,7 @@ RB.ceo = (function () {
 
   /* ========================================================= 2. SALES ===== */
   var perfDim = 'owner';
-  var dayDate = null, dayMonth = null, dayWho = null;
+  var dayDate = null, dayMonth = null, dayWho = null, callRange = 'This month';
 
   function sales(host) {
     var s = slice(), vs = s.vs, range = s.range;
@@ -445,7 +445,7 @@ RB.ceo = (function () {
     vs.forEach(function (v) { keep[v.opp.id] = true; });
     var perDay = {}, lastActive = null;
     RB.store.connects().forEach(function (c) {
-      if (!c.at || (c.opportunityId && !keep[c.opportunityId])) return;
+      if (!c.at || (c.opportunityId && !keep[c.opportunityId] && !RB.store.leadById(c.opportunityId))) return;
       var d = c.at.slice(0, 10);
       perDay[d] = (perDay[d] || 0) + 1;
       if (!lastActive || d > lastActive) lastActive = d;
@@ -460,6 +460,12 @@ RB.ceo = (function () {
       attentionPanel(att, { compact: true, limit: 8 }) +
 
       teamTargets() +
+
+      /* The Robobox Caller: the calls, and what they turned into. */
+      RB.store.users().filter(function (u) { return u.role === 'caller'; }).map(function (u) {
+        return '<div class="section-title">' + U.esc(u.name) + '</div><div data-caller="' + U.esc(u.id) + '">' +
+          RB.views.callerCard(u.id, callRange) + '</div>';
+      }).join('') +
 
       '<div class="section-title">Performance</div>' +
       '<div class="tabs">' + Object.keys(dims).map(function (k) {
@@ -552,6 +558,9 @@ RB.ceo = (function () {
     if (strip) strip.addEventListener('click', function () { UI.drill('Needs Action', att.map(function (i) { return i.v; })); });
     bindAttention(host, att);
     RB.views.bindActivity(host);
+    host.querySelectorAll('[data-caller] [data-range]').forEach(function (b) {
+      b.addEventListener('click', function () { callRange = b.getAttribute('data-range'); sales(host); });
+    });
     // On a phone the names scroll sideways; keep the picked one in sight.
     var picked = host.querySelector('[data-who][aria-pressed="true"]');
     if (picked) picked.parentNode.scrollLeft = picked.offsetLeft - picked.parentNode.offsetLeft - 8;

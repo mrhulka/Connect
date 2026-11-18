@@ -15,7 +15,7 @@ ctx.window = ctx; vm.createContext(ctx);
 ['util.js', 'model.js'].forEach(f => vm.runInContext(js(f), ctx, f));
 const M = ctx.window.RB.model;
 
-const users = [{ id: 'ayush', ownerKey: 'AYUSH' }];
+const users = [{ id: 'ayush', name: 'Ayush', ownerKey: 'AYUSH' }];
 const schools = [{ id: 'S1' }];
 const opps = [
   { id: 'O1', schoolId: 'S1', ownerKey: null, initialPotential: 100 },   // imported, no owner
@@ -46,4 +46,29 @@ assert.strictEqual(v('O2').owner, 'SID', 'an owner on the deal always wins');
 assert.strictEqual(v('O3').stage, 'New School', 'a stage the rep picked always wins');
 assert.strictEqual(v('O4').stage, 'New School');
 assert.strictEqual(M.ownerOf(connects[0]), 'AYUSH', 'team-day planning follows the same owner');
+
+/* Robobox Caller leads: routed by region on first name, and a lead's state
+ * is its latest call. */
+users.push({ id: 'sid', name: 'Sid', ownerKey: 'SID' }, { id: 'gaurav', name: 'Gaurav Mishra', ownerKey: 'GAURAV' },
+  { id: 'robobox', name: 'Robobox Caller', role: 'caller', ownerKey: 'ROBOBOX' });
+schools.push({ id: 'S2', name: 'New One', region: 'Central' }, { id: 'S3', name: 'New Two', region: 'Pune' });
+const leads = [{ id: 'L1', schoolId: 'S2', status: 'Lead' }, { id: 'L2', schoolId: 'S3', status: 'Lead' }];
+ctx.window.RB.store.leads = () => leads;
+ctx.window.RB.store.leadById = id => byId(leads, id);
+ctx.window.RB.store.contactById = () => null;
+connects.push(
+  { id: 'C6', opportunityId: 'L1', schoolId: 'S2', by: 'robobox', response: 'Meeting Fixed', nextAction: 'Meeting', nextActionAt: '2026-11-19T11:30:00', at: '2026-11-18T10:00:00' },
+  { id: 'C7', opportunityId: 'L2', schoolId: 'S3', by: 'robobox', response: 'To confirm in a few days', nextAction: 'Call back', nextActionAt: '2026-11-20T11:00:00', at: '2026-11-18T10:05:00' });
+M.invalidate();
+const owners = r => M.leadOwners(r).map(u => u.id).sort().join(',');
+assert.strictEqual(owners('Central'), 'ayush,sid', 'Central goes to both Sid and Ayush');
+assert.strictEqual(owners('Pune'), 'gaurav', 'a name with no login (Pramod) is skipped');
+const L = M.leads();
+assert.strictEqual(L.find(l => l.lead.id === 'L1').state, 'With sales');
+assert.strictEqual(L.find(l => l.lead.id === 'L2').state, 'Callback', 'to confirm stays with the caller');
+const leadIds = id => M.tasks(id).filter(t => t.leadId).map(t => t.leadId).join(',');
+assert.strictEqual(leadIds('sid'), 'L1'); assert.strictEqual(leadIds('ayush'), 'L1');
+assert.strictEqual(leadIds('gaurav'), '', 'a callback is not sent to sales');
+assert.strictEqual(leadIds('robobox'), 'L2', 'the callback is on the caller\'s list');
+assert.ok(M.views().every(v => v.opp.status !== 'Lead'), 'a lead is never a deal');
 console.log('imported: all checks passed');

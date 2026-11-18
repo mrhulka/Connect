@@ -26,8 +26,16 @@ RB.auth = (function () {
    * Every role exports Excel; what the workbook contains follows the same
    * scope and money rules as the screen.
    */
+  /* sell: the salesperson's own pages. leads: the Leads list. calls: the
+   * Robobox Caller's page - the one role that calls new schools. */
   var PERMISSIONS = {
+    caller: {
+      scope: 'own', sell: false, leads: true, calls: true,
+      ceoDashboard: false, teamBoard: false, money: false, teamRollup: false,
+      exportOwn: false, exportAll: false, editAny: false, manageSettings: false
+    },
     sales: {
+      sell: true, leads: true,
       scope: 'own',
       ceoDashboard: false,
       teamBoard: false,
@@ -39,6 +47,7 @@ RB.auth = (function () {
       manageSettings: false
     },
     sales_head: {
+      sell: true, leads: true,
       scope: 'team',
       ceoDashboard: false,
       teamBoard: true,
@@ -61,6 +70,7 @@ RB.auth = (function () {
       manageSettings: true
     },
     ceo: {
+      sell: true, leads: true,
       scope: 'all',
       ceoDashboard: true,
       teamBoard: true,
@@ -73,7 +83,7 @@ RB.auth = (function () {
     }
   };
 
-  var ROLE_LABEL = { sales: 'Sales', sales_head: 'Head of Sales', outsight: 'Outsight', ceo: 'CEO' };
+  var ROLE_LABEL = { caller: 'Robobox Caller', sales: 'Sales', sales_head: 'Head of Sales', outsight: 'Outsight', ceo: 'CEO' };
 
   function signIn(userId, pin) {
     var u = RB.store.userById(userId);

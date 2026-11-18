@@ -9,6 +9,8 @@ RB.connectForm = (function () {
   function open(preset) {
     d = Object.assign({ kind: null, schoolId: null, opportunityId: null, contactId: null },
       preset || {});
+    if (RB.auth.user().role === 'caller') return stepCall();
+    if (d.takeLead) return takeLead(d.takeLead);
     if (d.opportunityId) { d.kind = 'Existing'; return stepConnect(); }
     if (d.schoolId) { d.kind = 'Existing'; return stepPickOpportunity(); }
     stepKind();
@@ -50,22 +52,142 @@ RB.connectForm = (function () {
       });
   }
 
+  /* ====================================================== CALLER ==== */
+  /* The Robobox Caller's call to a new school: name, region, outcome. A
+   * rejection ends there; a callback stays with her on a date; anything else
+   * goes to the region's salespeople as a lead, with the meeting and contact. */
+  var CALLBACK = 'To confirm in a few days';
+
+  function stepCall() {
+    var me = RB.auth.user(), today = U.iso(U.today());
+    var lead = d.leadId ? RB.store.leadById(d.leadId) : null;
+    var school = lead ? RB.store.schoolById(lead.schoolId) : null;
+    shell(lead ? 'Call again · ' + school.name : 'Log a call',
+      '<form id="f">' +
+      (lead ? '' : UI.field('Name of the school', '<input class="input" name="name" required autocomplete="off">') +
+        '<div id="dupe"></div>') +
+      '<div class="field-row">' +
+      UI.field('Location', UI.select('region', V.region, school ? school.region : null, { placeholder: 'Select', required: true })) +
+      UI.field('Outcome', UI.select('response', V.response, null, { placeholder: 'Select', required: true })) +
+      '</div>' +
+      '<div id="more"></div>' +
+      UI.field('Notes', '<input class="input" name="notes" placeholder="Optional">') +
+      '<div class="modal-actions"><button type="submit" class="btn btn-primary btn-lg btn-block">Save call</button></div>' +
+      '</form>',
+      function (host) {
+        var f = host.querySelector('#f'), more = host.querySelector('#more'), blocked = false;
+
+        // The salespeople's day, so a meeting is not booked over another one.
+        function calendarFor(owners, date) {
+          if (!date || !owners.length) return '';
+          return '<div class="cal-peek">' + owners.map(function (u) {
+            var items = M.calendar(u.id, date, 1)[0].items;
+            return '<div><strong>' + U.esc(u.name) + '</strong> on ' + U.esc(U.fmtDate(date)) + ': ' +
+              (items.length ? items.map(function (t) {
+                return U.esc((t.due ? t.due.slice(11, 16) + ' ' : '') + t.title);
+              }).join(' · ') : '<span class="muted">nothing booked</span>') + '</div>';
+          }).join('') + '</div>';
+        }
+
+        function draw() {
+          var v = UI.values(f), r = v.response;
+          if (!r || r === 'Rejected') { more.innerHTML = ''; return; }
+          if (r === CALLBACK) {
+            more.innerHTML = '<div class="field-row">' +
+              UI.field('Call back on', '<input class="input" type="date" name="date" min="' + today + '" required value="' + U.esc(v.date || '') + '">') +
+              UI.field('Time', '<input class="input" type="time" name="time" value="' + U.esc(v.time || '') + '">') +
+              '</div><p class="field-hint">Stays with you; it shows in your calls and calendar on that day.</p>';
+            return;
+          }
+          var owners = M.leadOwners(v.region);
+          var meeting = r === 'Meeting Fixed';
+          more.innerHTML = '<div class="field-row">' +
+            UI.field(meeting ? 'Meeting date' : 'Follow-up date', '<input class="input" type="date" name="date" min="' + today + '"' +
+              (meeting ? ' required' : '') + ' value="' + U.esc(v.date || '') + '">') +
+            UI.field('Time', '<input class="input" type="time" name="time"' + (meeting ? ' required' : '') + ' value="' + U.esc(v.time || '') + '">') +
+            '</div><div class="field-row">' +
+            UI.field('Contact person', '<input class="input" name="contactName" required value="' + U.esc(v.contactName || '') + '">') +
+            UI.field('Phone', '<input class="input" type="tel" name="contactPhone" required inputmode="tel" value="' + U.esc(v.contactPhone || '') + '">') +
+            '</div>' +
+            '<p class="field-hint">' + (owners.length
+              ? 'Goes to ' + U.esc(owners.map(function (u) { return u.name; }).join(' and ')) +
+                (owners.length > 1 ? '. Both see it; whoever acts first owns it.' : '.')
+              : v.region ? 'Nobody is set up for ' + U.esc(v.region) + ' yet; the CEO sees it in Leads.' : 'Pick a location to see who it goes to.') + '</p>' +
+            calendarFor(owners, v.date);
+        }
+        f.addEventListener('change', function (e) {
+          if (/^(region|response|date)$/.test(e.target.name)) draw();
+        });
+
+        // New schools only: an existing school belongs to the sales team.
+        var name = f.querySelector('[name=name]'), dupe = host.querySelector('#dupe');
+        if (name) name.addEventListener('input', U.debounce(function () {
+          var t = name.value.trim().toLowerCase();
+          var hit = t.length > 2 && RB.store.schools().filter(function (s) {
+            return s.name.toLowerCase().indexOf(t) !== -1;
+          })[0];
+          var hitLead = hit && RB.store.leads().filter(function (l) { return l.schoolId === hit.id; })[0];
+          blocked = !!hit && !hitLead && hit.name.trim().toLowerCase() === t;
+          dupe.innerHTML = !hit ? '' : hitLead
+            ? '<div class="prev-connect"><div class="pc-label">Already called</div>' + U.esc(hit.name) +
+              ' <button type="button" class="btn btn-sm" data-again="' + U.esc(hitLead.id) + '">Call again</button></div>'
+            : '<div class="prev-connect"><div class="pc-label">Existing school</div>' + U.esc(hit.name) +
+              ' is already in the app. The sales team calls existing schools.</div>';
+          var b = dupe.querySelector('[data-again]');
+          if (b) b.addEventListener('click', function () { d.leadId = b.getAttribute('data-again'); stepCall(); });
+        }, 200));
+
+        f.addEventListener('submit', function (e) {
+          e.preventDefault();
+          if (blocked) return UI.toast('That school is already with the sales team.');
+          var v = UI.values(f), r = v.response;
+          var at = v.date ? v.date + 'T' + (v.time || '11:00') + ':00' : null;
+          if (school && school.region !== v.region) RB.store.updateSchool(school.id, { region: v.region });
+          RB.store.addLead(school ? { id: school.id } : { name: v.name.trim(), region: v.region, leadSource: 'Robobox Caller', ownerKey: null },
+            v.contactName ? { name: v.contactName, phone: v.contactPhone || null } : null, {
+              opportunityId: d.leadId || null, by: me.id, kind: lead ? 'Reconnect' : 'New', mode: 'Call',
+              response: r, notes: v.notes || null,
+              nextAction: r === 'Rejected' ? null : r === CALLBACK ? 'Call back' : r === 'Meeting Fixed' ? 'Meeting' : (at ? 'Follow-up' : null),
+              nextActionAt: r === 'Rejected' ? null : at,
+              nextActionOwner: r === CALLBACK ? me.ownerKey : null,
+              at: today + 'T' + new Date().toTimeString().slice(0, 8)
+            });
+          var to = M.leadOwners(v.region).map(function (u) { return u.name; }).join(' and ');
+          UI.closeModal();
+          UI.toast(r === 'Rejected' ? 'Saved as rejected.' : r === CALLBACK ? 'Saved. Call back on ' + U.fmtDate(v.date) + '.'
+            : 'Saved' + (to ? ' and sent to ' + to : '') + '.');
+          RB.app.refresh();
+        });
+      });
+  }
+
+  /* A salesperson acts on a lead: the New School Connect, filled in with what
+   * the caller has, on the school she created. Saving makes it their deal. */
+  function takeLead(id) {
+    var l = RB.store.leadById(id);
+    if (!l) return UI.toast('Someone has already taken this lead.');
+    d = { kind: 'New', leadId: id, schoolId: l.schoolId, school: Object.assign({}, RB.store.schoolById(l.schoolId)) };
+    stepNewLead();
+  }
+
   /* ============================================ NEW SCHOOL CONNECT ==== */
   /* 1. Create new school lead — the name is typed, not searched. */
   function stepNewLead() {
-    shell('New school lead',
+    var pre = d.leadId ? d.school : {};
+    shell(d.leadId ? 'Take lead · ' + pre.name : 'New school lead',
       '<form id="f">' +
       '<div class="field-row">' +
-      UI.field('School name', '<input class="input" name="name" required autofocus autocomplete="off">') +
-      UI.field('Location', '<input class="input" name="location" required>') +
+      UI.field('School name', '<input class="input" name="name" required autofocus autocomplete="off" value="' + U.esc(pre.name || '') + '">') +
+      UI.field('Location', '<input class="input" name="location" required value="' + U.esc(pre.location || '') + '">') +
       '</div>' +
       '<div class="field-row">' +
-      UI.field('Sales region', UI.select('region', V.region, null, { placeholder: 'Select', required: true })) +
+      UI.field('Sales region', UI.select('region', V.region, pre.region || null, { placeholder: 'Select', required: true })) +
       UI.field('Board', UI.select('board', V.board, null, { placeholder: 'Select', required: true })) +
       UI.field('Student count', '<input class="input" type="number" name="students" min="0" step="1" inputmode="numeric">') +
       '</div>' +
       '<div class="field-row">' +
-      UI.field('Lead source', UI.select('leadSource', V.leadSource, null, { placeholder: 'Select', required: true })) +
+      UI.field('Lead source', UI.select('leadSource', d.leadId ? ['Robobox Caller'].concat(V.leadSource) : V.leadSource,
+        pre.leadSource || null, { placeholder: 'Select', required: true })) +
       UI.field('Referral person', '<input class="input" name="referredBy" placeholder="Only if referred">') +
       '</div>' +
       '<div id="dupe"></div>' +
@@ -76,6 +198,7 @@ RB.connectForm = (function () {
         // A school exists once — warn before a second record is created.
         f.querySelector('[name=name]').addEventListener('input', U.debounce(function () {
           var t = this.value.trim();
+          if (d.leadId) return;   // the school is the lead's own
           var hit = t.length > 2 && RB.store.schools().filter(function (s) {
             return s.name.toLowerCase().indexOf(t.toLowerCase()) !== -1;
           })[0];
@@ -147,6 +270,7 @@ RB.connectForm = (function () {
 
   function submitAllConnects() {
     if (d.school && !d.schoolId) d.schoolId = RB.store.addSchool(d.school).id;
+    else if (d.leadId) RB.store.updateSchool(d.schoolId, d.school);
 
     var createdOppIds = [];
     var primaryForm = null;
@@ -156,7 +280,7 @@ RB.connectForm = (function () {
       var f = oppItem.formData || {};
       if (index === 0) primaryForm = f; // Capture primary form data for the shared connect log
 
-      var oppId = RB.store.addOpportunity(Object.assign({
+      var fields = Object.assign({
         schoolId: d.schoolId,
         ownerKey: RB.auth.user().ownerKey,
         offering: oppItem.offering,
@@ -166,9 +290,11 @@ RB.connectForm = (function () {
         probability: f.probability ? Number(f.probability) : null,
         stage: f.stage || null,
         salesYear: f.salesYear || null
-      }, oppItem)).id;
-
-      createdOppIds.push(oppId);
+      }, oppItem);
+      // The lead becomes the first deal, so the caller's calls are on it.
+      var opp = (index === 0 && d.leadId && RB.store.takeLead(d.leadId, fields)) ||
+        RB.store.addOpportunity(fields);
+      createdOppIds.push(opp.id);
     });
 
     // 2. Log EXACTLY ONE connect record for this school visit, linking to the primary opportunity
@@ -240,7 +366,9 @@ RB.connectForm = (function () {
       '</div>' +
 
       '<div class="cx-step"><h3>Type of connect</h3>' +
-      UI.choice('mode', V.connectMode, savedData.mode || null, { tight: true }) + '</div>' +
+      // New schools are called by the Robobox Caller; sales still call schools they have.
+      UI.choice('mode', isNew ? V.connectMode.filter(function (m) { return m !== 'Call'; }) : V.connectMode,
+        savedData.mode || null, { tight: true }) + '</div>' +
 
       '<div class="field-row">' +
       UI.field('Date of connect', '<input class="input" type="date" name="date" value="' + (savedData.date || today) + '" max="' + today + '" required>') +

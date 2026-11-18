@@ -158,6 +158,20 @@ count everywhere, without changing the stored records:
 
 `node tools/test_imported.js` checks both rules.
 
+## Robobox Caller and Leads
+
+The Robobox Caller (role `caller`) calls new schools only. Her call creates
+the school, the contact, and an opportunity with `status: "Lead"` that holds
+her calls. `store.js` keeps leads apart from deals, so no deal figure counts
+one. Its state is its latest call: Rejected; To confirm in a few days (a
+callback, on her own list); anything else goes to the region's salespeople
+(`M.LEAD_ROUTE`, matched on first name). Leads, tasks and calendars show it
+to all of them; the first to take it gets a New School Connect pre-filled on
+the same school, and saving turns the lead into their deal (status `Open`,
+owner set), with her calls already on it. Sales can no longer pick Call on a
+New School Connect. The server's `opportunities.status` must accept `"Lead"`
+and `users.role` must accept `"caller"`.
+
 ## Dropped deals
 
 A deal with `status: "Dropped"` was never real business. `store.js` leaves it

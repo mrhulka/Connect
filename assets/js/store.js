@@ -52,6 +52,7 @@ RB.store = (function () {
 
   function reconcileOfferings() {
     var dropped = {}, schoolOnly = {};
+    state.leads = [];
     state.opportunities = state.opportunities.filter(function (o) {
       if (RB.model.OFFERING_RETIRED[o.offering]) { dropped[o.id] = true; return false; }
       /* A deal marked Dropped was never real business: the school stays, the
@@ -60,6 +61,10 @@ RB.store = (function () {
        * day, the calendar and the school timeline still show them. Only this
        * copy in memory changes; the records on the server are untouched. */
       if (o.status === 'Dropped') { schoolOnly[o.id] = true; return false; }
+      /* A lead from the Robobox Caller is not a deal yet: it waits in Leads
+       * until a salesperson takes it. Kept apart so no deal figure counts it;
+       * its connects keep pointing at it, so taking it carries the calls. */
+      if (o.status === 'Lead') { state.leads.push(o); return false; }
       var to = RB.model.offeringOf(o.offering);
       if (to !== o.offering) { o.renamedFrom = o.offering; o.offering = to; }
       return true;
@@ -84,6 +89,8 @@ RB.store = (function () {
   var opportunities = function () { return state.opportunities; };
   var connects = function () { return state.connects; };
   var users = function () { return state.users; };
+  var leads = function () { return state.leads || []; };
+  var leadById = function (id) { return id ? byId(leads(), id) : null; };
   var meta = function () { return state.meta; };
 
   function byId(list, id) {
@@ -237,6 +244,34 @@ RB.store = (function () {
     return s;
   }
 
+  /* The Robobox Caller's call on a new school: the school (if new), the
+   * contact, a Lead to hang the calls on, and the call itself. */
+  function addLead(school, contact, call) {
+    var s = school.id ? schoolById(school.id) : addSchool(school);
+    var lead = call.opportunityId ? leadById(call.opportunityId) : null;
+    if (!lead) {
+      lead = { id: U.uid('OPP'), schoolId: s.id, offering: null, variant: null, ownerKey: null, coOwners: [],
+               initialPotential: null, stage: null, status: 'Lead', origin: 'app', createdAt: U.iso(U.today()) };
+      state.leads.push(lead);
+      commit({ type: 'opportunity_add', opportunity: lead });
+    }
+    var contactId = contact && contact.name ? addContact(Object.assign({ schoolId: s.id }, contact)).id : call.contactId || null;
+    return logConnect(Object.assign({}, call, { schoolId: s.id, opportunityId: lead.id, contactId: contactId }));
+  }
+
+  /* A salesperson takes a lead: it becomes their deal, with the caller's
+   * calls already on it, and leaves everyone else's Leads. */
+  // ponytail: last save wins if two people take the same lead at once; add a server check if that happens.
+  function takeLead(id, patch) {
+    var o = leadById(id);
+    if (!o) return null;
+    state.leads.splice(state.leads.indexOf(o), 1);
+    Object.assign(o, patch, { status: 'Open' });
+    state.opportunities.push(o);
+    commit({ type: 'opportunity_add', opportunity: o });
+    return o;
+  }
+
   function updateOpportunity(id, patch) {
     var o = opportunityById(id);
     if (o) { Object.assign(o, patch); commit({ type: 'opportunity_add', opportunity: o }); }
@@ -309,7 +344,7 @@ RB.store = (function () {
     savePricingTarget: savePricingTarget,                               
     removePricingTarget: removePricingTarget,
     schoolById: schoolById, opportunityById: opportunityById, contactById: contactById,
-    userById: userById, contactsFor: contactsFor, opportunitiesFor: opportunitiesFor,
+    userById: userById, leads: leads, leadById: leadById, addLead: addLead, takeLead: takeLead, contactsFor: contactsFor, opportunitiesFor: opportunitiesFor,
     connectsForSchool: connectsForSchool, findSchool: findSchool,
     addUser: addUser, updateUser: updateUser, removeUser: removeUser,
     addSchool: addSchool, addContact: addContact, addOpportunity: addOpportunity,

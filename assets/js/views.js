@@ -45,6 +45,7 @@ RB.views = (function () {
     var ts = M.tasks(me().id);
     var buckets = { Overdue: [], Today: [], Upcoming: [] };
     ts.forEach(function (t) { buckets[t.bucket].push(t); });
+    var newLeads = ts.filter(function (t) { return t.leadId; }).length;
 
     host.innerHTML =
       UI.head('Hello, ' + me().name,
@@ -58,6 +59,8 @@ RB.views = (function () {
                   foot: buckets.Overdue.length ? 'needs attention today' : 'all clear',
                   onClick: 'overdue' }),
         UI.stat({ label: 'Due today', value: U.count(buckets.Today.length), onClick: 'today' }),
+        UI.stat({ label: 'New leads', value: U.count(newLeads), onClick: 'leads',
+                  cls: newLeads ? 'stat-brand' : '', foot: newLeads ? 'from the Robobox Caller' : 'none waiting' }),
         UI.stat({ cls: 'stat-hero', label: 'Business in Play', value: U.money(all.activePipeline),
                   foot: all.activeCount + ' opportunities' }),
         UI.stat({ label: 'Business Won', value: U.money(all.closedRevenue),
@@ -70,6 +73,8 @@ RB.views = (function () {
       (buckets.Upcoming.length ? '<div class="section-title">Coming up</div>' + taskList(buckets.Upcoming.slice(0, 8)) : '');
     bindTasks(host);
     bindStats(host, { overdue: ['Overdue', buckets.Overdue], today: ['Due today', buckets.Today] }, true);
+    var lb = host.querySelector('[data-stat="leads"]');
+    if (lb) lb.addEventListener('click', function () { RB.app.go('leads'); });
   }
 
   function taskList(tasks) {
@@ -77,15 +82,23 @@ RB.views = (function () {
       return '<div class="task ' + (t.bucket === 'Overdue' ? 'overdue' : t.bucket === 'Today' ? 'today' : '') + '">' +
         '<div class="task-main"><strong>' + U.esc(t.title) + '</strong>' +
         '<small>' + U.esc([t.offering, t.due ? U.fmtDate(t.due.slice(0, 10)) + ' ' + t.due.slice(11, 16) : 'no date',
-                           U.money(t.value)].filter(Boolean).join(' · ')) + '</small></div>' +
+                           t.value != null ? U.money(t.value) : null].filter(Boolean).join(' · ')) + '</small></div>' +
         '<div class="task-right">' +
         '<button class="btn btn-sm" data-open-school="' + U.esc(t.schoolId) + '">School</button>' +
-        '<button class="btn btn-dark btn-sm" data-log-opp="' + U.esc(t.opportunityId) + '">Connect</button>' +
+        (!t.leadId ? '<button class="btn btn-dark btn-sm" data-log-opp="' + U.esc(t.opportunityId) + '">Connect</button>'
+          : t.lead.state === 'Callback' ? '<button class="btn btn-dark btn-sm" data-call-again="' + U.esc(t.leadId) + '">Call again</button>'
+          : '<button class="btn btn-dark btn-sm" data-take-lead="' + U.esc(t.leadId) + '">Take lead</button>') +
         '</div></div>';
     }).join('');
   }
 
   function bindTasks(host) {
+    host.querySelectorAll('[data-take-lead]').forEach(function (b) {
+      b.addEventListener('click', function () { RB.connectForm.open({ takeLead: b.getAttribute('data-take-lead') }); });
+    });
+    host.querySelectorAll('[data-call-again]').forEach(function (b) {
+      b.addEventListener('click', function () { RB.connectForm.open({ leadId: b.getAttribute('data-call-again') }); });
+    });
     host.querySelectorAll('[data-log-opp]').forEach(function (b) {
       b.addEventListener('click', function () {
         RB.connectForm.open({ opportunityId: b.getAttribute('data-log-opp') });
@@ -101,10 +114,105 @@ RB.views = (function () {
       b.addEventListener('click', function () {
         var hit = map[b.getAttribute('data-stat')];
         if (!hit) return;
-        if (asTasks) UI.drill(hit[0], hit[1].map(function (t) { return t.view; }));
+        if (asTasks) UI.drill(hit[0], hit[1].map(function (t) { return t.view; }).filter(Boolean));
         else UI.drill(hit[0], hit[1]);
       });
     });
+  }
+
+  /* ============================================================ CALLS ==== */
+  /* The Robobox Caller's page: what is due back to her, what she logged
+   * today, and what her calls have turned into. */
+  var callRange = 'Today';
+
+  function myCalls(host) {
+    var me = RB.auth.user(), today = U.iso(U.today());
+    var ts = M.tasks(me.id);
+    var due = ts.filter(function (t) { return t.bucket !== 'Upcoming'; });
+    var later = ts.filter(function (t) { return t.bucket === 'Upcoming'; });
+    var calls = RB.store.connects().filter(function (c) { return c.by === me.id && c.at && c.at.slice(0, 10) === today; });
+
+    host.innerHTML = UI.head('Hello, ' + me.name, U.fmtDate(today) + ' · new schools only. Existing schools are the sales team\'s.') +
+      '<div class="row wrap" style="margin-bottom:18px"><button class="btn btn-primary btn-lg" id="log-call">' +
+        UI.icon('plus') + 'Log a call</button></div>' +
+      '<div class="section-title">Call back · ' + due.length + ' due</div>' +
+      (due.length ? taskList(due) : '<div class="empty">No callbacks due.</div>') +
+      (later.length ? '<div class="section-title">Coming up</div>' + taskList(later.slice(0, 8)) : '') +
+      '<div class="section-title">Today\'s calls · ' + calls.length + '</div>' +
+      (activity(calls, true) || '<div class="empty">No calls logged yet today.</div>') +
+      '<div class="section-title">My scorecard</div>' + callerCard(me.id, callRange);
+    host.querySelector('#log-call').addEventListener('click', function () { RB.connectForm.open(); });
+    bindRange(host, function (r) { callRange = r; myCalls(host); });
+    bindTasks(host);
+  }
+
+  /* One caller's numbers for a period: effort, then what it became. Shared
+   * with the CEO's Sales tab so both read the same figures. */
+  function callerCard(userId, rangeKey) {
+    var s = M.callerScore(userId, M.RANGES()[rangeKey]);
+    var stat = function (label, value, foot, cls) {
+      return UI.stat({ small: true, label: label, value: value, foot: foot, cls: cls || '' });
+    };
+    return rangeBar(rangeKey) + UI.stats([
+      stat('Calls', U.count(s.calls), U.count(s.schools) + ' schools', 'stat-hero'),
+      stat('Meetings fixed', U.count(s.meetings), s.meetingRate == null ? '—' : Math.round(s.meetingRate) + '% of calls', 'stat-brand'),
+      stat('Sent to sales', U.count(s.sent), 'leads handed over'),
+      stat('Call back', U.count(s.callbacks), 'to confirm in a few days'),
+      stat('Rejected', U.count(s.rejected), ''),
+      stat('Taken by sales', U.count(s.taken), U.count(s.won) + ' won')
+    ].concat(RB.auth.can('money') ? [stat('Business in Play', U.money(s.pipeline), 'from these schools')] : []));
+  }
+
+  /* ============================================================ LEADS ==== */
+  /* Where the caller's leads land. A salesperson sees the ones routed to
+   * them; the head of sales, the CEO and the caller see all of them. */
+  var leadTab = 'With sales';
+
+  function leads(host) {
+    var me = RB.auth.user();
+    var all = M.leads();
+    var everyone = me.role === 'caller' || RB.auth.can('teamBoard');
+    var mine = all.filter(function (l) {
+      return l.state === 'With sales' && l.owners.some(function (u) { return u.id === me.id; });
+    });
+    var tabs = ['With sales', 'Callback', 'Rejected'];
+    var rows = everyone ? all.filter(function (l) { return l.state === leadTab; }) : mine;
+    rows = U.sortBy(rows, function (l) { return l.due || l.last.at || ''; }, 'asc');
+
+    host.innerHTML = UI.head('Leads', everyone
+      ? 'New schools from the Robobox Caller, and where each one stands.'
+      : 'New schools the Robobox Caller has set up for you. Take one to make it your deal.') +
+      (everyone ? '<div class="tabs">' + tabs.map(function (k) {
+        var n = all.filter(function (l) { return l.state === k; }).length;
+        return '<button type="button" data-lead-tab="' + k + '" aria-pressed="' + (k === leadTab) + '">' + U.esc(k) + ' · ' + n + '</button>';
+      }).join('') + '</div>' : '') +
+      (rows.length ? rows.map(function (l) { return leadRow(l, me); }).join('')
+        : '<div class="empty">' + (everyone ? 'Nothing here.' : 'No new leads for you right now.') + '</div>');
+    host.querySelectorAll('[data-lead-tab]').forEach(function (b) {
+      b.addEventListener('click', function () { leadTab = b.getAttribute('data-lead-tab'); leads(host); });
+    });
+    bindTasks(host);
+  }
+
+  function leadRow(l, me) {
+    var c = l.contact, others = l.owners.filter(function (u) { return u.id !== me.id; });
+    var mineToTake = l.state === 'With sales' && l.owners.some(function (u) { return u.id === me.id; });
+    var when = l.due ? U.fmtDate(l.due.slice(0, 10)) + ' ' + l.due.slice(11, 16) : null;
+    return '<div class="task' + (l.due && l.due.slice(0, 10) < U.iso(U.today()) ? ' overdue' : '') + '"><div class="task-main">' +
+      '<strong>' + U.esc(l.school.name || '') + '</strong>' +
+      '<small>' + U.esc([l.school.region, l.last.response,
+        when ? (l.last.nextAction || 'Next') + ' ' + when : null].filter(Boolean).join(' · ')) + '</small>' +
+      '<small>' + (c ? U.esc(c.name) + (c.phone ? ' · <a href="tel:' + U.esc(c.phone) + '">' + U.esc(c.phone) + '</a>' : '') + ' · ' : '') +
+        'called by ' + U.esc(l.caller ? l.caller.name : '—') + (l.last.at ? ' on ' + U.esc(U.fmtDate(l.last.at.slice(0, 10))) : '') +
+        (l.state === 'With sales' ? ' · ' + (mineToTake
+          ? (others.length ? 'also with ' + U.esc(others.map(function (u) { return u.name; }).join(', ')) : 'yours')
+          : 'with ' + U.esc(l.owners.map(function (u) { return u.name; }).join(' / ') || 'nobody yet')) : '') + '</small>' +
+      (l.last.notes ? '<small class="muted">' + U.esc(l.last.notes) + '</small>' : '') +
+      '</div><div class="task-right">' +
+      '<button class="btn btn-sm" data-open-school="' + U.esc(l.school.id) + '">School</button>' +
+      (mineToTake ? '<button class="btn btn-dark btn-sm" data-take-lead="' + U.esc(l.lead.id) + '">Take lead</button>' : '') +
+      (me.role === 'caller' && l.state !== 'With sales' ? '<button class="btn btn-dark btn-sm" data-call-again="' + U.esc(l.lead.id) + '">Call again</button>' : '') +
+      '</div></div>';
   }
 
   /* ============================================================= TASKS ==== */
@@ -471,6 +579,7 @@ RB.views = (function () {
 
   return {
     myDay: myDay, myTasks: myTasks, myCalendar: myCalendar, myScorecard: myScorecard,
-    mySchools: mySchools, school: school, activity: activity, bindActivity: bindTasks
+    mySchools: mySchools, school: school, activity: activity, bindActivity: bindTasks,
+    myCalls: myCalls, leads: leads, callerCard: callerCard
   };
 })();

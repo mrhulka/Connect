@@ -8,11 +8,13 @@ RB.app = (function () {
   var current = null;
 
   var ROUTES = {
-    'day':       { label: 'My day',        icon: UI.icon('day'), group: 'Sell',       render: RB.views.myDay },
-    'tasks':     { label: 'My tasks',      icon: UI.icon('tasks'), group: 'Sell',       render: RB.views.myTasks },
+    'calls':     { label: 'My calls',      icon: UI.icon('phone'), group: 'Call', need: 'calls', render: RB.views.myCalls },
+    'day':       { label: 'My day',        icon: UI.icon('day'), group: 'Sell', need: 'sell', render: RB.views.myDay },
+    'leads':     { label: 'Leads',         icon: UI.icon('leads'), group: 'Sell', need: 'leads', render: RB.views.leads },
+    'tasks':     { label: 'My tasks',      icon: UI.icon('tasks'), group: 'Sell', need: 'sell', render: RB.views.myTasks },
     'calendar':  { label: 'My calendar',   icon: UI.icon('calendar'), group: 'Sell',       render: RB.views.myCalendar },
-    'schools':   { label: 'My schools',    icon: UI.icon('schools'), group: 'Sell',       render: RB.views.mySchools },
-    'scorecard': { label: 'My performance', icon: UI.icon('scorecard'), group: 'Sell',      render: RB.views.myScorecard },
+    'schools':   { label: 'My schools',    icon: UI.icon('schools'), group: 'Sell', need: 'sell', render: RB.views.mySchools },
+    'scorecard': { label: 'My performance', icon: UI.icon('scorecard'), group: 'Sell', need: 'sell', render: RB.views.myScorecard },
 
     /* The command centre: four tabs, one filter bar, one set of formulas.
      * `need` is the permission that opens the route. Sales is the team board -
@@ -31,13 +33,17 @@ RB.app = (function () {
     var route = ROUTES[r];
     return !!route && (!route.need || RB.auth.can(route.need));
   }
-  function defaultRoute() { return RB.auth.can('ceoDashboard') ? 'business' : 'day'; }
+  function defaultRoute() {
+    return RB.auth.can('ceoDashboard') ? 'business' : RB.auth.user().role === 'caller' ? 'calls' : 'day';
+  }
 
   function nav() {
     var ts = M.tasks(RB.auth.user().id);
     var badges = {
       day: ts.filter(function (t) { return t.bucket === 'Overdue'; }).length,
-      tasks: ts.length
+      tasks: ts.length,
+      leads: ts.filter(function (t) { return t.leadId && t.lead.state === 'With sales'; }).length,
+      calls: ts.filter(function (t) { return t.bucket !== 'Upcoming'; }).length
     };
     if (RB.auth.can('ceoDashboard')) {
       badges.business = M.needsAttention(M.views(), M.fitModel(M.views())).length;
@@ -82,10 +88,11 @@ RB.app = (function () {
    * most, Log Connect raised in the middle, and More for everything else -
    * which opens the same rail as a sheet. Same routes, same permissions. */
   function tabbar(badges) {
-    var want = RB.auth.can('ceoDashboard') ? ['business', 'sales', 'schools']
-      : RB.auth.can('teamBoard') ? ['day', 'sales', 'schools'] : ['day', 'tasks', 'schools'];
+    var want = RB.auth.user().role === 'caller' ? ['calls', 'leads', 'calendar']
+      : RB.auth.can('ceoDashboard') ? ['business', 'sales', 'schools']
+      : RB.auth.can('teamBoard') ? ['day', 'sales', 'schools'] : ['day', 'leads', 'schools'];
     var tabs = want.filter(allowed);
-    var short = { day: 'Today', tasks: 'Tasks', schools: 'Schools', business: 'Business', sales: 'Sales' };
+    var short = { calls: 'Calls', calendar: 'Calendar', day: 'Today', tasks: 'Tasks', schools: 'Schools', business: 'Business', sales: 'Sales' };
     function tab(k) {
       var b = badges[k];
       return '<button type="button" class="tab" data-tab-route="' + k + '"' +
@@ -552,7 +559,8 @@ RB.app = (function () {
   var ROLE_CHOICES = [
     { id: 'sales',      label: 'Sales' },
     { id: 'sales_head', label: 'Head of Sales' },
-    { id: 'outsight',   label: 'Outsight' }
+    { id: 'outsight',   label: 'Outsight' },
+    { id: 'caller',     label: 'Robobox Caller' }
   ];
 
   function teamCard() {
@@ -580,7 +588,7 @@ RB.app = (function () {
       '<div class="row wrap"><button class="btn btn-primary" type="submit">Add person</button>' +
       '<span class="field-hint">They sign in with their first name in lower case as the access code. ' +
       'Sales sees their own schools; Head of Sales sees the team without the money; ' +
-      'Outsight sees everything except this page.</span></div></form>');
+      'Outsight sees everything except this page; the Robobox Caller logs calls to new schools and sees Leads.</span></div></form>');
   }
 
   function bindTeam(host) {

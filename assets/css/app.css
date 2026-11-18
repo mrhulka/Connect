@@ -804,7 +804,10 @@ table.data .strong { font-weight: 650; }
 .task.today { box-shadow: inset 4px 0 0 var(--brand), var(--shadow-1); }
 .task-main { min-width: 0; flex: 1; }
 .task-main strong { display: block; font-size: 15px; line-height: 1.35; }
-.task-main small { color: var(--ink-muted); font-size: 13px; }
+.task-main small { display: block; color: var(--ink-muted); font-size: 13px; }
+.task-main a { color: var(--ink); font-weight: 600; text-decoration: none; }
+.cal-peek { display: grid; gap: 4px; margin: -4px 0 14px; padding: 10px 12px; border-radius: var(--r-sm);
+  background: var(--surface-2); font-size: 13px; color: var(--ink-2); }
 .task .task-right { margin-left: auto; display: flex; align-items: center; gap: 8px; white-space: nowrap; }
 @media (max-width: 560px) {
   .task { flex-wrap: wrap; align-items: flex-start; padding: 16px; }
