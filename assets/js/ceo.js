@@ -449,15 +449,22 @@ RB.ceo = (function () {
           U.esc(dims[k]) + '</button>';
       }).join('') + '</div>' +
       '<div class="grid grid-2">' +
-        UI.card('Business in Play', 'Business in play, ' + dims[perfDim].toLowerCase(),
-          C.hbar({ data: groups.map(function (g) { return { key: g.key, value: g.qualifiedValue }; }),
-                   format: U.money, measureLabel: 'Ready', labelW: 150, onClick: true,
-                   empty: 'Nothing is ready to forecast yet — see Missing Information on Business Overview.' })) +
-        UI.card('Business Moved', 'Business that advanced a step in the period',
-          C.hbar({ data: groups.map(function (g) { return { key: g.key, value: g.movedValue }; }),
-                   format: U.money, measureLabel: 'Moved', labelW: 150, onClick: true,
-                   empty: 'No business advanced a step in this period.',
-                   color: function () { return 'var(--brand)'; } })) +
+        UI.card('Business in Play', 'Open deals, ' + dims[perfDim].toLowerCase(),
+          '<div id="perf-play">' + C.rank({ format: U.money, empty: 'No open deals in this view.',
+            data: groups.map(function (g) {
+              var open = g.rows.filter(function (v) { return v.status === 'Open'; }).length;
+              return { key: g.key, label: groupLabel(perfDim, g.key), value: g.pipeline,
+                       foot: U.count(open) + ' open deal' + (open === 1 ? '' : 's') +
+                         (g.qualifiedValue ? ' · ' + U.money(g.qualifiedValue) + ' ready to forecast' : '') };
+            }) }) + '</div>') +
+        UI.card('Business Moved', 'Deals that moved up a stage, ' +
+          (F.rangeSet() ? F.rangeLabel() : 'all time. Pick dates in Filters to see a period'),
+          '<div id="perf-moved">' + C.rank({ format: U.money, tone: 'brand',
+            empty: 'No business advanced a step in this period.',
+            data: groups.map(function (g) {
+              return { key: g.key, label: groupLabel(perfDim, g.key), value: g.movedValue,
+                       foot: U.count(g.movedCount) + ' deal' + (g.movedCount === 1 ? '' : 's') + ' moved a step' };
+            }) }) + '</div>') +
       '</div>' +
       '<div id="perf"></div>' +
 
@@ -521,10 +528,13 @@ RB.ceo = (function () {
     host.querySelectorAll('[data-tyear]').forEach(function (b) {
       b.addEventListener('click', function () { targetYear = b.getAttribute('data-tyear'); sales(host); });
     });
-    host.querySelectorAll('.viz [data-key]').forEach(function (g) {
-      g.addEventListener('click', function () {
-        var grp = groups.filter(function (x) { return x.key === g.getAttribute('data-key'); })[0];
-        if (grp) UI.drill(grp.key, grp.rows);
+    [['#perf-play', function (g) { return g.rows.filter(function (v) { return v.status === 'Open'; }); }],
+     ['#perf-moved', function (g) { return g.movedRows; }]].forEach(function (pair) {
+      host.querySelectorAll(pair[0] + ' [data-key]').forEach(function (b) {
+        b.addEventListener('click', function () {
+          var grp = groups.filter(function (x) { return x.key === b.getAttribute('data-key'); })[0];
+          if (grp) UI.drill(groupLabel(perfDim, grp.key), pair[1](grp));
+        });
       });
     });
 
@@ -571,6 +581,15 @@ RB.ceo = (function () {
     });
   }
 
+  /* Owner keys are stored in capitals (GAURAV); people read names. A key
+   * with no one behind it (someone who has left) is still shown, readably. */
+  function groupLabel(dim, key) {
+    if (key === '—') return 'Not set';
+    if (dim !== 'owner') return key;
+    var u = RB.store.users().filter(function (x) { return x.ownerKey === key; })[0];
+    return u ? u.name : key.charAt(0) + key.slice(1).toLowerCase();
+  }
+
   function perfColumns(label) {
     return [
       { key: 'key', label: label, get: function (g) { return g.key; },
@@ -602,7 +621,7 @@ RB.ceo = (function () {
       { label: label, get: function (g) { return g.key; } },
       { label: 'Leads', type: 'number', get: function (g) { return g.leads; } },
       { label: 'Potential deals created', type: 'number', get: function (g) { return g.created; } },
-      { label: 'Business in Play', type: 'money', get: function (g) { return g.qualifiedValue; } },
+      { label: 'Ready to forecast', type: 'money', get: function (g) { return g.qualifiedValue; } },
       { label: 'Business in Play', type: 'money', get: function (g) { return g.pipeline; } },
       { label: 'Expected Business', type: 'money', get: function (g) { return g.weighted; } },
       { label: 'Business Won', type: 'money', get: function (g) { return g.closed; } },
@@ -804,7 +823,7 @@ RB.ceo = (function () {
           { label: 'Lead source', get: function (g) { return g.key; } },
           { label: 'Leads', type: 'number', get: function (g) { return g.leads; } },
           { label: 'Potential deals', type: 'number', get: function (g) { return g.count; } },
-          { label: 'Business in Play', type: 'money', get: function (g) { return g.qualifiedValue; } },
+          { label: 'Ready to forecast', type: 'money', get: function (g) { return g.qualifiedValue; } },
           { label: 'In Play', type: 'money', get: function (g) { return g.pipeline; } },
           { label: 'Business Won', type: 'money', get: function (g) { return g.closed; } },
           { label: 'Win rate %', type: 'percent', get: function (g) { return g.winRate; } },

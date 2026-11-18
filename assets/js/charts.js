@@ -117,6 +117,26 @@ RB.charts = (function () {
       'aria-label="' + esc(opts.title || 'Bar chart') + '">' + marks + '</svg>';
   }
 
+  /* ------------------------------------------------------------------ rank */
+  /* A ranked list in HTML, not SVG: the type stays at body size on any screen
+   * instead of shrinking with a viewBox, the name sits right beside its
+   * number, and each row is a button that opens its deals (data-key). */
+  function rank(opts) {
+    var data = U.sortBy((opts.data || []).filter(function (d) { return d.value > 0; }),
+      function (d) { return d.value; }, 'desc');
+    if (!data.length) return '<p class="empty">' + esc(opts.empty || 'Nothing recorded yet.') + '</p>';
+    var fmt = opts.format || U.count;
+    var peak = data[0].value;
+    return '<div class="rank' + (opts.tone ? ' is-' + opts.tone : '') + '">' + data.map(function (d) {
+      return '<button type="button" class="rank-row" data-key="' + esc(d.key) + '">' +
+        '<span class="rank-name">' + esc(d.label || d.key) + '</span>' +
+        '<span class="rank-val">' + esc(fmt(d.value)) + '</span>' +
+        '<span class="rank-bar"><i style="width:' + Math.max(2, d.value / peak * 100).toFixed(1) + '%"></i></span>' +
+        (d.foot ? '<span class="rank-foot">' + esc(d.foot) + '</span>' : '') +
+      '</button>';
+    }).join('') + '</div>';
+  }
+
   /* ---------------------------------------------------------------- funnel */
   /* Ordered stages -> the ordinal ramp, plus the step-to-step conversion. */
   function funnel(opts) {
@@ -340,7 +360,7 @@ RB.charts = (function () {
 
   return {
     INK: INK, STATUS: STATUS, seriesColor: seriesColor, ordinalColor: ordinalColor, seqColor: seqColor,
-    hbar: hbar, funnel: funnel, line: line, column: column, bubble: bubble,
+    hbar: hbar, rank: rank, funnel: funnel, line: line, column: column, bubble: bubble,
     sparkline: sparkline, legend: legend, initTooltip: initTooltip, truncate: truncate
   };
 })();

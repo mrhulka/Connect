@@ -1160,6 +1160,25 @@ button.kpi:active, .jstep:active, .fitcard:active, .action-item:active { transfo
 @keyframes rb-shake { 0%, 100% { transform: none; } 20% { transform: translateX(-5px); }
   40% { transform: translateX(5px); } 60% { transform: translateX(-3px); } 80% { transform: translateX(2px); } }
 
+/* ================================================================= RANK */
+/* Ranked rows: name and number on one line, the bar under them. Body-size
+ * type at every width - no SVG scaling. */
+.rank { display: grid; gap: 2px; margin: 0 -10px; }
+.rank-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: baseline; gap: 6px 14px;
+  padding: 10px; border: 0; border-radius: var(--r-sm); background: none; text-align: left; cursor: pointer;
+  transition: background var(--t-fast) var(--ease-out); }
+.rank-row:hover { background: var(--surface-2); }
+.rank-row:focus-visible { outline: 0; box-shadow: var(--ring); }
+.rank-row:active { transform: scale(.99); transition-duration: var(--t-press); }
+.rank-name { font-weight: 600; font-size: 15px; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rank-val { font: 700 18px/1.1 var(--display); letter-spacing: -.02em; font-variant-numeric: tabular-nums; color: var(--ink); }
+.rank-bar { grid-column: 1 / -1; height: 8px; border-radius: var(--r-pill); background: var(--surface-sunk); overflow: hidden; }
+.rank-bar i { display: block; height: 100%; border-radius: inherit; background: var(--ramp-5);
+  transform-origin: left; animation: rank-grow var(--t-slow) var(--ease-out) both; }
+.rank.is-brand .rank-bar i { background: var(--brand); }
+.rank-foot { grid-column: 1 / -1; font-size: 12.5px; color: var(--ink-muted); }
+@keyframes rank-grow { from { transform: scaleX(0); } }
+
 /* ============================================================== COMFORT */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { transition: none !important; animation: none !important; scroll-behavior: auto !important; }

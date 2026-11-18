@@ -183,7 +183,7 @@ RB.filters = (function () {
   function count() { return active().length + (rangeSet() ? 1 : 0); }
 
   return { KEYS: KEYS, CEO_KEYS: CEO_KEYS, apply: apply, applySchools: applySchools, bar: bar, bind: bind,
-           describe: describe, active: active, count: count, range: range, rangeSet: rangeSet,
+           describe: describe, active: active, count: count, range: range, rangeSet: rangeSet, rangeLabel: rangeLabel,
            inRange: inRange, connectInRange: connectInRange,
            get state() { return state; } };
 })();
