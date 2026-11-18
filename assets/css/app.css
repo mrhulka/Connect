@@ -1179,6 +1179,20 @@ button.kpi:active, .jstep:active, .fitcard:active, .action-item:active { transfo
 .rank-foot { grid-column: 1 / -1; font-size: 12.5px; color: var(--ink-muted); }
 @keyframes rank-grow { from { transform: scaleX(0); } }
 
+/* ============================================================= ACTIVITY */
+/* A day's connects: school, kind of connect, who - and a Next steps toggle (<details>). */
+.act { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.act li { padding: 12px 14px; border: 1px solid var(--line); border-radius: var(--r-md); background: var(--surface); }
+.act-head { font-size: 15px; line-height: 1.35; font-weight: 650; color: var(--ink); }
+.act-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 6px; font-size: 12.5px; color: var(--ink-muted); }
+.act details { margin-top: 10px; }
+.act summary { list-style: none; display: inline-flex; cursor: pointer; }
+.act summary::-webkit-details-marker { display: none; }
+.act summary::after { content: "›"; margin-left: 6px; transition: transform var(--t-fast) var(--ease-out); }
+.act details[open] summary::after { transform: rotate(90deg); }
+.act-next { display: grid; gap: 8px; margin-top: 10px; padding: 12px; border-radius: var(--r-sm);
+  background: var(--surface-2); font-size: 13.5px; color: var(--ink); animation: rb-pop var(--t-med) var(--ease-out) both; }
+
 /* ============================================================== COMFORT */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { transition: none !important; animation: none !important; scroll-behavior: auto !important; }

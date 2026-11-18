@@ -176,7 +176,7 @@ RB.views = (function () {
         UI.card(U.fmtDate(day) + (day === today ? ' · today' : ''),
           (day <= today ? done.length + ' connect' + (done.length === 1 ? '' : 's') + ' logged · ' : '') +
             items.length + ' next step' + (items.length === 1 ? '' : 's') + (past ? ' still open' : ''),
-          (done.length ? '<ul class="timeline">' + done.map(function (c) { return connectItem(c, true); }).join('') + '</ul>' : '') +
+          activity(done, true) +
           (items.length ? (done.length ? '<div class="section-title">Next steps</div>' : '') + taskList(items) : '') +
           (!done.length && !items.length
             ? '<div class="cal-empty">' + (past ? 'Nothing logged on this day.' : 'Nothing due on this day.') + '</div>' : '')) +
@@ -406,15 +406,13 @@ RB.views = (function () {
     });
   }
 
-  /* One connect as a timeline row: on a school it is that school's history,
-   * on the calendar (withSchool) it names the school it was logged against. */
-  function connectItem(c, withSchool) {
+  /* One connect as a row of a school's timeline. */
+  function connectItem(c) {
     var opp = RB.store.opportunityById(c.opportunityId);
     var contact = c.contactId ? RB.store.contactById(c.contactId) : null;
     var cls = c.kind === 'New' ? 'brand' : /Not Interested|Lost|No Response/.test(c.response || '') ? 'red' : '';
-    var sc = withSchool && RB.store.schoolById(c.schoolId);
     return '<li class="' + cls + '"><div class="tl-head">' +
-      '<strong>' + U.esc((c.mode || 'Connect') + (sc ? ' — ' + sc.name : '')) + '</strong>' +
+      '<strong>' + U.esc(c.mode || 'Connect') + '</strong>' +
       '<span class="tag">' + U.esc(c.response || '—') + '</span>' +
       (contact ? '<span class="small sec">' + U.esc(contact.name) + '</span>' : '') +
       '<span class="tl-date">' + U.esc(c.at ? U.fmtDate(c.at.slice(0, 10)) : (c.dateRaw || 'undated')) +
@@ -431,8 +429,41 @@ RB.views = (function () {
       (c.notes ? '<div class="tl-body">' + U.esc(c.notes) + '</div>' : '') +
       (c.nextAction ? '<div class="small muted" style="margin-top:5px">Next: ' + U.esc(c.nextAction) +
         (c.nextActionAt ? ' · ' + U.esc(U.fmtDate(c.nextActionAt.slice(0, 10))) : '') + '</div>' : '') +
-      (sc ? '<button class="btn btn-sm" style="margin-top:8px" data-open-school="' + U.esc(sc.id) + '">School</button>' : '') +
       '</li>';
+  }
+
+  /* A day's connects: the school, the kind of connect and who made it (left
+   * out on your own calendar), each with a Next steps toggle - what was
+   * agreed on it, and where the deal stands now. <details> does the opening
+   * and closing; bindTasks wires the buttons. */
+  function activity(cs, mine) {
+    if (!cs.length) return '';
+    return '<ul class="act">' + U.sortBy(cs, function (c) { return c.at || ''; }, 'asc').map(function (c) {
+      var sc = RB.store.schoolById(c.schoolId);
+      var o = c.opportunityId && RB.store.opportunityById(c.opportunityId);
+      var v = o ? M.view(o) : null;
+      var owner = c.nextActionOwner && RB.store.users().filter(function (u) { return u.ownerKey === c.nextActionOwner; })[0];
+      var agreed = c.nextAction && c.nextAction !== 'No Further Action'
+        ? c.nextAction + (c.nextActionAt ? ' by ' + U.fmtDate(c.nextActionAt.slice(0, 10)) : ', no date set') +
+          (owner ? ' · ' + owner.name : '')
+        : 'No next step was set.';
+      var later = v && v.last && v.last.id !== c.id;
+      var now = !v ? null : v.status !== 'Open' ? 'Closed as ' + v.status
+        : v.stage + ' · ' + (v.nextAction ? 'next: ' + v.nextAction +
+            (v.nextActionAt ? ' by ' + U.fmtDate(v.nextActionAt.slice(0, 10)) : '') : 'no next step');
+      return '<li><div class="act-head">' + U.esc(sc ? sc.name : 'School not found') + '</div>' +
+        '<div class="act-meta"><span class="tag">' + U.esc(c.mode || 'Connect') + '</span> ' + U.esc([
+          mine ? null : userName(c.by),
+          // Imported rows carry a placeholder clock time, not a real one.
+          c.origin !== 'import' && c.at ? c.at.slice(11, 16) : null].filter(Boolean).join(' · ')) + '</div>' +
+        '<details><summary class="btn btn-sm">Next steps</summary><div class="act-next">' +
+          '<div><span class="muted">Agreed: </span>' + U.esc(agreed) + '</div>' +
+          (now ? '<div><span class="muted">' + (later ? 'Since then: ' : 'Now: ') + '</span>' + U.esc(now) + '</div>' : '') +
+          '<div class="row wrap">' +
+            (sc ? '<button class="btn btn-sm" data-open-school="' + U.esc(sc.id) + '">School</button>' : '') +
+            (v && v.status === 'Open' ? '<button class="btn btn-dark btn-sm" data-log-opp="' + U.esc(o.id) + '">Log next connect</button>' : '') +
+          '</div></div></details></li>';
+    }).join('') + '</ul>';
   }
 
   function kv(k, v) { return '<dt>' + U.esc(k) + '</dt><dd>' + U.esc(v) + '</dd>'; }
@@ -440,6 +471,6 @@ RB.views = (function () {
 
   return {
     myDay: myDay, myTasks: myTasks, myCalendar: myCalendar, myScorecard: myScorecard,
-    mySchools: mySchools, school: school
+    mySchools: mySchools, school: school, activity: activity, bindActivity: bindTasks
   };
 })();

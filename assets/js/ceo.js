@@ -435,6 +435,8 @@ RB.ceo = (function () {
     var groups = M.performance(vs, perfDim, range);
     var date = dayDate || U.iso(U.today());
     var day = M.dayActivity(date, F.apply);
+    var nextDay = U.addDays(date, 1);
+    var lined = M.dayActivity(nextDay, F.apply).reduce(function (a, r) { return a.concat(r.planned); }, []);
     /* How many connects were logged on each day, so the calendar shows where
      * the activity actually is instead of making the CEO guess a date. */
     var keep = {};
@@ -507,7 +509,12 @@ RB.ceo = (function () {
                       value: U.count(day.filter(function (r) { return !r.done.length; }).length),
                       foot: day.filter(function (r) { return !r.done.length; })
                                .map(function (r) { return r.user.name; }).join(', ') || '—' })
-          ])) +
+          ]) +
+          '<div class="section-title">What the team did</div>' +
+          (RB.views.activity(day.reduce(function (a, r) { return a.concat(r.done); }, [])) ||
+            '<div class="empty">Nothing logged on this day.</div>') +
+          '<div class="section-title">Lined up for ' + U.esc(U.fmtDate(nextDay)) + '</div>' +
+          (lined.length ? agenda(lined) : '<div class="empty">No next steps fall on this day.</div>')) +
       '</div>' +
       '<p class="small muted">Click a person for their day in order.</p>' +
       '<div id="day"></div>' +
@@ -536,6 +543,7 @@ RB.ceo = (function () {
     var strip = host.querySelector('#att-strip');
     if (strip) strip.addEventListener('click', function () { UI.drill('Needs Action', att.map(function (i) { return i.v; })); });
     bindAttention(host, att);
+    RB.views.bindActivity(host);
     host.querySelectorAll('[data-target-owner]').forEach(function (tr) {
       tr.addEventListener('click', function () { targetModal(tr.getAttribute('data-target-owner')); });
     });
@@ -558,7 +566,7 @@ RB.ceo = (function () {
         var grp = groups.filter(function (x) { return x.key === k; })[0];
         if (grp) UI.drill(grp.key, grp.rows);
       },
-      columns: perfColumns(M.DIMENSIONS[perfDim].label)
+      columns: perfColumns(M.DIMENSIONS[perfDim].label, perfDim)
     });
 
     UI.table(host.querySelector('#day'), {
@@ -604,10 +612,10 @@ RB.ceo = (function () {
     return u ? u.name : key.charAt(0) + key.slice(1).toLowerCase();
   }
 
-  function perfColumns(label) {
+  function perfColumns(label, dim) {
     return [
-      { key: 'key', label: label, get: function (g) { return g.key; },
-        render: function (g) { return '<span class="strong">' + U.esc(g.key) + '</span>'; } },
+      { key: 'key', label: label, get: function (g) { return groupLabel(dim, g.key); },
+        render: function (g) { return '<span class="strong">' + U.esc(groupLabel(dim, g.key)) + '</span>'; } },
       { key: 'leads', label: 'Leads', num: true, get: function (g) { return g.leads; },
         render: function (g) { return U.count(g.leads); } },
       { key: 'created', label: 'Deals', num: true, get: function (g) { return g.created; },
@@ -676,32 +684,23 @@ RB.ceo = (function () {
         UI.stat({ small: true, cls: 'stat-brand', label: 'Business Moved', value: U.money(row.movedValue) }),
         UI.stat({ small: true, label: 'Planned', value: row.kept + ' / ' + row.planned.length })
       ]) +
-      (done.length
-        ? '<ul class="timeline">' + done.map(function (c) {
-            var sc = RB.store.schoolById(c.schoolId);
-            var o = c.opportunityId && RB.store.opportunityById(c.opportunityId);
-            return '<li><div class="tl-date">' + U.esc(c.at ? c.at.slice(11, 16) : '—') + '</div>' +
-              '<div class="tl-body"><div class="tl-head"><strong>' +
-                U.esc((c.mode || 'Connect') + ' — ' + (sc ? sc.name : '')) + '</strong>' +
-                (o ? '<span class="tag">' + U.esc(o.offering || 'Opportunity') + '</span>' : '') +
-                (c.stage ? '<span class="tag tag-dark">' + U.esc(c.stage) + '</span>' : '') + '</div>' +
-              '<div class="small muted">' + U.esc([
-                  c.response ? 'Outcome: ' + c.response : null,
-                  c.blocker && c.blocker !== 'None' ? 'Blocker: ' + c.blocker : null,
-                  c.nextAction ? 'Next: ' + c.nextAction + (c.nextActionAt ? ' by ' + U.fmtDate(c.nextActionAt.slice(0, 10)) : '') : null
-                ].filter(Boolean).join(' · ')) + '</div></div></li>';
-          }).join('') + '</ul>'
-        : '<div class="empty">Nothing logged on this day.</div>') +
-      (row.planned.length
-        ? '<div class="section-title">Agenda for the day</div>' +
-          row.planned.map(function (c) {
-            var sc = RB.store.schoolById(c.schoolId);
-            return '<div class="task"><div class="task-main"><strong>' +
-              U.esc((c.nextAction || 'Follow up') + ' — ' + (sc ? sc.name : '')) + '</strong>' +
-              '<small>' + U.esc(c.nextActionOwner || '') + '</small></div></div>';
-          }).join('')
-        : ''),
-      { wide: true });
+      (RB.views.activity(done) || '<div class="empty">Nothing logged on this day.</div>') +
+      (row.planned.length ? '<div class="section-title">Agenda for the day</div>' + agenda(row.planned) : ''),
+      { wide: true, onMount: RB.views.bindActivity });
+  }
+
+  /* Next steps that fall on a day, one line each: what, where, whose. */
+  function agenda(planned) {
+    return planned.map(function (c) {
+      var sc = RB.store.schoolById(c.schoolId);
+      var u = RB.store.users().filter(function (x) { return x.ownerKey === c.nextActionOwner; })[0];
+      return '<div class="task"><div class="task-main"><strong>' +
+        U.esc((c.nextAction || 'Follow up') + ' — ' + (sc ? sc.name : '')) + '</strong>' +
+        '<small>' + U.esc(u ? u.name : (c.nextActionOwner || '')) + '</small></div>' +
+        (sc ? '<div class="task-right"><button class="btn btn-sm" data-open-school="' + U.esc(sc.id) + '">School</button></div>' : '') +
+        '</div>';
+    }).join('');
+
   }
 
   /* ======================================================== 3. MARKET ===== */
