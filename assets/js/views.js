@@ -137,33 +137,49 @@ RB.views = (function () {
   }
 
   /* ========================================================== CALENDAR ==== */
-  /* A month, not a scroll of 21 days. The badge on a day is how many next
-   * actions fall on it, so the busy days are visible before you click one. */
+  /* A month, not a scroll of 21 days. Ahead of today the badge on a day is how
+   * many next actions fall on it; on a past day it is how many connects you
+   * logged, and picking the day lists them. */
   var calMonth = null, calDay = null;
 
   function myCalendar(host) {
     var today = U.iso(U.today());
     var month = calMonth || today.slice(0, 7);
     var day = calDay || today;
-    var byDay = {};
+    var byDay = {}, logged = {};
     M.tasks(me().id).forEach(function (t) {
       if (!t.due) return;
       var d = t.due.slice(0, 10);
       (byDay[d] = byDay[d] || []).push(t);
     });
+    RB.store.connects().forEach(function (c) {
+      if (c.by !== me().id || !c.at) return;
+      var d = c.at.slice(0, 10);
+      (logged[d] = logged[d] || []).push(c);
+    });
     var items = byDay[day] || [];
+    var done = U.sortBy(logged[day] || [], function (c) { return c.at; }, 'asc');
+    var past = day < today;
 
-    host.innerHTML = UI.head('My calendar', 'Built from the next step on every Connect. Nothing to add by hand.') +
+    host.innerHTML = UI.head('My calendar', 'Built from your Connects. Nothing to add by hand.') +
       '<div class="grid grid-2">' +
-        UI.card('Month', 'The number on a day is how many next steps fall on it',
+        UI.card('Month', 'Past days: connects you logged. Today on: next steps due.',
           UI.monthGrid({ month: month, selected: day,
             get: function (iso) {
+              if (iso < today) {
+                var k = (logged[iso] || []).length;
+                return { n: k, title: k ? k + ' connect' + (k === 1 ? '' : 's') + ' logged' : '' };
+              }
               var n = (byDay[iso] || []).length;
               return { n: n, title: n ? n + ' next step' + (n === 1 ? '' : 's') : '' };
             } })) +
         UI.card(U.fmtDate(day) + (day === today ? ' · today' : ''),
-          items.length + ' next step' + (items.length === 1 ? '' : 's'),
-          items.length ? taskList(items) : '<div class="cal-empty">Nothing due on this day.</div>') +
+          (day <= today ? done.length + ' connect' + (done.length === 1 ? '' : 's') + ' logged · ' : '') +
+            items.length + ' next step' + (items.length === 1 ? '' : 's') + (past ? ' still open' : ''),
+          (done.length ? '<ul class="timeline">' + done.map(function (c) { return connectItem(c, true); }).join('') + '</ul>' : '') +
+          (items.length ? (done.length ? '<div class="section-title">Next steps</div>' : '') + taskList(items) : '') +
+          (!done.length && !items.length
+            ? '<div class="cal-empty">' + (past ? 'Nothing logged on this day.' : 'Nothing due on this day.') + '</div>' : '')) +
       '</div>';
     UI.bindMonthGrid(host,
       function (d) { calDay = d; calMonth = d.slice(0, 7); myCalendar(host); },
@@ -373,30 +389,7 @@ RB.views = (function () {
       }).join('') : '<div class="empty">No opportunities yet.</div>') +
 
       '<div class="section-title">Connect timeline · ' + cs.length + '</div>' +
-      (cs.length ? '<ul class="timeline">' + cs.map(function (c) {
-        var opp = RB.store.opportunityById(c.opportunityId);
-        var contact = c.contactId ? RB.store.contactById(c.contactId) : null;
-        var cls = c.kind === 'New' ? 'brand' : /Not Interested|Lost|No Response/.test(c.response || '') ? 'red' : '';
-        return '<li class="' + cls + '"><div class="tl-head">' +
-          '<strong>' + U.esc(c.mode || 'Connect') + '</strong>' +
-          '<span class="tag">' + U.esc(c.response || '—') + '</span>' +
-          (contact ? '<span class="small sec">' + U.esc(contact.name) + '</span>' : '') +
-          '<span class="tl-date">' + U.esc(c.at ? U.fmtDate(c.at.slice(0, 10)) : (c.dateRaw || 'undated')) +
-          ' · ' + U.esc(userName(c.by)) + '</span></div>' +
-          (opp ? '<div class="small muted">' + U.esc(opp.offering || 'Opportunity') + '</div>' : '') +
-          (c.commercial && (c.commercial.quoted != null || c.commercial.negotiated != null)
-            ? '<div class="small"><strong>' +
-              (c.commercial.quoted != null ? 'Quoted ' + U.money(c.commercial.quoted) : '') +
-              (c.commercial.negotiated != null ? ' Negotiated ' + U.money(c.commercial.negotiated) : '') +
-              '</strong></div>' : '') +
-          (c.blocker && c.blocker !== 'None'
-            ? '<div class="small"><span class="tag tag-red">' + U.esc(c.blocker) + '</span> ' +
-              U.esc(c.blockerDetail || '') + '</div>' : '') +
-          (c.notes ? '<div class="tl-body">' + U.esc(c.notes) + '</div>' : '') +
-          (c.nextAction ? '<div class="small muted" style="margin-top:5px">Next: ' + U.esc(c.nextAction) +
-            (c.nextActionAt ? ' · ' + U.esc(U.fmtDate(c.nextActionAt.slice(0, 10))) : '') + '</div>' : '') +
-          '</li>';
-      }).join('') + '</ul>' : '<div class="empty">No connects logged yet.</div>');
+      (cs.length ? '<ul class="timeline">' + cs.map(function (c) { return connectItem(c); }).join('') + '</ul>' : '<div class="empty">No connects logged yet.</div>');
 
     UI.modal(s.name, body, {
       wide: true,
@@ -411,6 +404,35 @@ RB.views = (function () {
         });
       }
     });
+  }
+
+  /* One connect as a timeline row: on a school it is that school's history,
+   * on the calendar (withSchool) it names the school it was logged against. */
+  function connectItem(c, withSchool) {
+    var opp = RB.store.opportunityById(c.opportunityId);
+    var contact = c.contactId ? RB.store.contactById(c.contactId) : null;
+    var cls = c.kind === 'New' ? 'brand' : /Not Interested|Lost|No Response/.test(c.response || '') ? 'red' : '';
+    var sc = withSchool && RB.store.schoolById(c.schoolId);
+    return '<li class="' + cls + '"><div class="tl-head">' +
+      '<strong>' + U.esc((c.mode || 'Connect') + (sc ? ' — ' + sc.name : '')) + '</strong>' +
+      '<span class="tag">' + U.esc(c.response || '—') + '</span>' +
+      (contact ? '<span class="small sec">' + U.esc(contact.name) + '</span>' : '') +
+      '<span class="tl-date">' + U.esc(c.at ? U.fmtDate(c.at.slice(0, 10)) : (c.dateRaw || 'undated')) +
+      ' · ' + U.esc(userName(c.by)) + '</span></div>' +
+      (opp ? '<div class="small muted">' + U.esc(opp.offering || 'Opportunity') + '</div>' : '') +
+      (c.commercial && (c.commercial.quoted != null || c.commercial.negotiated != null)
+        ? '<div class="small"><strong>' +
+          (c.commercial.quoted != null ? 'Quoted ' + U.money(c.commercial.quoted) : '') +
+          (c.commercial.negotiated != null ? ' Negotiated ' + U.money(c.commercial.negotiated) : '') +
+          '</strong></div>' : '') +
+      (c.blocker && c.blocker !== 'None'
+        ? '<div class="small"><span class="tag tag-red">' + U.esc(c.blocker) + '</span> ' +
+          U.esc(c.blockerDetail || '') + '</div>' : '') +
+      (c.notes ? '<div class="tl-body">' + U.esc(c.notes) + '</div>' : '') +
+      (c.nextAction ? '<div class="small muted" style="margin-top:5px">Next: ' + U.esc(c.nextAction) +
+        (c.nextActionAt ? ' · ' + U.esc(U.fmtDate(c.nextActionAt.slice(0, 10))) : '') + '</div>' : '') +
+      (sc ? '<button class="btn btn-sm" style="margin-top:8px" data-open-school="' + U.esc(sc.id) + '">School</button>' : '') +
+      '</li>';
   }
 
   function kv(k, v) { return '<dt>' + U.esc(k) + '</dt><dd>' + U.esc(v) + '</dd>'; }

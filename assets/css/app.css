@@ -631,7 +631,7 @@ input[type="date"].input { cursor: pointer; }
   display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;
   background: var(--surface); border: 1px solid var(--line); border-radius: 12px;
   transition: background-color var(--t-fast), border-color var(--t-fast), transform var(--t-press); }
-.cal-cell:hover:not(:disabled) { background: var(--surface-2); border-color: var(--line-strong); }
+.cal-cell:hover:not(:disabled):not([aria-pressed="true"]) { background: var(--surface-2); border-color: var(--line-strong); }
 .cal-cell:active:not(:disabled) { transform: scale(.94); }
 .cal-cell.is-out { color: var(--ink-muted); background: var(--surface-2); border-color: transparent; }
 .cal-cell.is-today { border-color: var(--ink); font-weight: 700; }
