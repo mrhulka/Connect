@@ -427,7 +427,7 @@ RB.ceo = (function () {
 
   /* ========================================================= 2. SALES ===== */
   var perfDim = 'owner';
-  var dayDate = null, dayMonth = null;
+  var dayDate = null, dayMonth = null, dayWho = null;
 
   function sales(host) {
     var s = slice(), vs = s.vs, range = s.range;
@@ -436,7 +436,9 @@ RB.ceo = (function () {
     var date = dayDate || U.iso(U.today());
     var day = M.dayActivity(date, F.apply);
     var nextDay = U.addDays(date, 1);
-    var lined = M.dayActivity(nextDay, F.apply).reduce(function (a, r) { return a.concat(r.planned); }, []);
+    /* "What the team did" for everyone, or one person picked from the chips. */
+    var mine = function (r) { return !dayWho || r.user.id === dayWho; };
+    var lined = M.dayActivity(nextDay, F.apply).filter(mine).reduce(function (a, r) { return a.concat(r.planned); }, []);
     /* How many connects were logged on each day, so the calendar shows where
      * the activity actually is instead of making the CEO guess a date. */
     var keep = {};
@@ -511,7 +513,13 @@ RB.ceo = (function () {
                                .map(function (r) { return r.user.name; }).join(', ') || '—' })
           ]) +
           '<div class="section-title">What the team did</div>' +
-          (RB.views.activity(day.reduce(function (a, r) { return a.concat(r.done); }, [])) ||
+          '<div class="tabs">' + [{ id: '', name: 'Everyone', n: U.sum(day, function (r) { return r.done.length; }) }]
+            .concat(day.map(function (r) { return { id: r.user.id, name: r.user.name, n: r.done.length }; }))
+            .map(function (x) {
+              return '<button type="button" data-who="' + U.esc(x.id) + '" aria-pressed="' + ((dayWho || '') === x.id) + '">' +
+                U.esc(x.name) + ' · ' + x.n + '</button>';
+            }).join('') + '</div>' +
+          (RB.views.activity(day.filter(mine).reduce(function (a, r) { return a.concat(r.done); }, [])) ||
             '<div class="empty">Nothing logged on this day.</div>') +
           '<div class="section-title">Lined up for ' + U.esc(U.fmtDate(nextDay)) + '</div>' +
           (lined.length ? agenda(lined) : '<div class="empty">No next steps fall on this day.</div>')) +
@@ -544,6 +552,12 @@ RB.ceo = (function () {
     if (strip) strip.addEventListener('click', function () { UI.drill('Needs Action', att.map(function (i) { return i.v; })); });
     bindAttention(host, att);
     RB.views.bindActivity(host);
+    // On a phone the names scroll sideways; keep the picked one in sight.
+    var picked = host.querySelector('[data-who][aria-pressed="true"]');
+    if (picked) picked.parentNode.scrollLeft = picked.offsetLeft - picked.parentNode.offsetLeft - 8;
+    host.querySelectorAll('[data-who]').forEach(function (b) {
+      b.addEventListener('click', function () { dayWho = b.getAttribute('data-who') || null; sales(host); });
+    });
     host.querySelectorAll('[data-target-owner]').forEach(function (tr) {
       tr.addEventListener('click', function () { targetModal(tr.getAttribute('data-target-owner')); });
     });
