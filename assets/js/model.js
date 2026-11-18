@@ -342,6 +342,11 @@ RB.model = (function () {
     return d === null ? Infinity : d;
   }
 
+  /* Business in play: an open deal someone has put a size on. A school that
+   * is only a lead (no size yet, or the size was cleared) is still worked and
+   * still shows its connects, but it is not money in play. */
+  function inPlay(v) { return v.status === 'Open' && v.current != null; }
+
   function views(opps) { return (opps || RB.store.opportunities()).map(view); }
 
   /* ============================================================== tasks ==== */
@@ -466,7 +471,7 @@ RB.model = (function () {
       opportunitiesCreated: created.length,
       potentialCreated: potentialCreated,
       // Pipeline
-      activeCount: open.length,
+      activeCount: open.filter(inPlay).length,
       activePipeline: U.sum(open, function (v) { return v.current || 0; }),
       quotedValue: quotedTotal,
       negotiatedValue: U.sum(vs, function (v) { return v.negotiated || 0; }),
@@ -1355,7 +1360,7 @@ RB.model = (function () {
       lostValue: U.sum(lost, function (v) { return v.lostAtValue || 0; }),
       lostCount: lost.length, lost: lost,
       closure: { 30: closureIn(30), 60: closureIn(60), 90: closureIn(90) },
-      open: open, active: active,
+      open: open, active: active, inPlay: open.filter(inPlay),
       activePipeline: U.sum(open, function (v) { return v.current || 0; }),
       // Market
       schools: schoolList, schoolsTapped: schoolList.length,
@@ -1770,7 +1775,7 @@ RB.model = (function () {
   return {
     V: V, STAGES: STAGES, KIT_BANDS: KIT_BANDS,
     salesYears: salesYears, currentSalesYear: currentSalesYear,
-    OFFERING_ALIAS: OFFERING_ALIAS, OFFERING_RETIRED: OFFERING_RETIRED, offeringOf: offeringOf, RANK: RANK, CLOSED: CLOSED, suggestStage: suggestStage, DIMENSIONS: DIMENSIONS,
+    OFFERING_ALIAS: OFFERING_ALIAS, OFFERING_RETIRED: OFFERING_RETIRED, offeringOf: offeringOf, RANK: RANK, CLOSED: CLOSED, suggestStage: suggestStage, inPlay: inPlay, DIMENSIONS: DIMENSIONS,
     connectsFor: connectsFor, view: view, views: views, invalidate: invalidate,
     tasks: tasks, calendar: calendar, scorecard: scorecard, RANGES: RANGES,
     funnel: funnel, commercialFunnel: commercialFunnel, groupBy: groupBy, rollup: rollup,

@@ -282,7 +282,7 @@ RB.ceo = (function () {
       '<div class="kpis">' +
         kpi('Total Business', U.money(b.potential), U.count(b.potentialCount) + ' potential deals', 'pot',
             'Every potential deal that is not lost and has a value on it.', 'kpi-dark') +
-        kpi('Business in Play', U.money(b.activePipeline), U.count(b.open.length) + ' being pursued', 'play',
+        kpi('Business in Play', U.money(b.activePipeline), U.count(b.inPlay.length) + ' being pursued', 'play',
             'Value of potential deals still open.') +
         kpi('Expected Business', U.money(b.weighted),
             b.noProbability.length ? U.count(b.noProbability.length) + ' have no likelihood set' : 'value × likelihood',
@@ -325,7 +325,7 @@ RB.ceo = (function () {
       return [
         { name: 'Business Overview', rows: [
             { label: 'Total Business', value: b.potential, n: b.potentialCount },
-            { label: 'Business in Play', value: b.activePipeline, n: b.open.length },
+            { label: 'Business in Play', value: b.activePipeline, n: b.inPlay.length },
             { label: 'Expected Business', value: b.weighted, n: b.open.length },
             { label: 'Business Won', value: b.wonValue, n: b.wonCount }
           ].concat(bands.map(function (h) { return { label: h.key, value: h.value, n: h.n }; })),
@@ -386,7 +386,7 @@ RB.ceo = (function () {
     });
 
     var map = {
-      pot: ['Total Business', b.identified], play: ['Business in Play', b.open],
+      pot: ['Total Business', b.identified], play: ['Business in Play', b.inPlay],
       expected: ['Expected Business', b.open], won: ['Business Won', b.won]
     };
     bands.forEach(function (h) { map['h-' + h.key] = [h.key, h.rows]; });
@@ -470,7 +470,7 @@ RB.ceo = (function () {
         UI.card('Business in Play', 'Open deals, ' + dims[perfDim].toLowerCase(),
           '<div id="perf-play">' + C.rank({ format: U.money, empty: 'No open deals in this view.',
             data: groups.map(function (g) {
-              var open = g.rows.filter(function (v) { return v.status === 'Open'; }).length;
+              var open = g.rows.filter(M.inPlay).length;
               return { key: g.key, label: groupLabel(perfDim, g.key), value: g.pipeline,
                        foot: U.count(open) + ' open deal' + (open === 1 ? '' : 's') +
                          (g.qualifiedValue ? ' · ' + U.money(g.qualifiedValue) + ' ready to forecast' : '') };
@@ -564,7 +564,7 @@ RB.ceo = (function () {
     host.querySelectorAll('[data-tyear]').forEach(function (b) {
       b.addEventListener('click', function () { targetYear = b.getAttribute('data-tyear'); sales(host); });
     });
-    [['#perf-play', function (g) { return g.rows.filter(function (v) { return v.status === 'Open'; }); }],
+    [['#perf-play', function (g) { return g.rows.filter(M.inPlay); }],
      ['#perf-moved', function (g) { return g.movedRows; }]].forEach(function (pair) {
       host.querySelectorAll(pair[0] + ' [data-key]').forEach(function (b) {
         b.addEventListener('click', function () {
