@@ -258,6 +258,8 @@ RB.ceo = (function () {
   }
 
   /* ====================================================== 1. BUSINESS ===== */
+  var bizDim = 'region';
+
   function business(host) {
     var s = slice(), vs = s.vs, range = s.range;
     var b = M.business(vs, range, s.schools);
@@ -265,7 +267,8 @@ RB.ceo = (function () {
     var bands = M.health(vs);
     var fit = M.fitModel(vs);
     var act = M.needsAttention(vs, fit);
-    var regions = M.groupBy(vs, 'region').map(function (g) {
+    var BIZ = { region: 'Region', offering: 'Offering' };
+    var byDim = M.groupBy(vs, bizDim).map(function (g) {
       g.expected = U.sum(g.rows.filter(function (v) { return v.status === 'Open'; }),
                          function (v) { return v.weighted; });
       g.schools = U.uniq(g.rows.map(function (v) { return v.opp.schoolId; })).length;
@@ -311,7 +314,12 @@ RB.ceo = (function () {
       (act.length ? attentionPanel(act, { limit: 6 })
                   : '<div class="section-title">Needs Action</div><div class="empty">Nothing needs intervention today.</div>') +
 
-      '<div class="section-title">Business by Region</div><div id="reg"></div>';
+      '<div class="section-title">Business by ' + BIZ[bizDim].toLowerCase() + '</div>' +
+      '<div class="tabs">' + Object.keys(BIZ).map(function (k) {
+        return '<button type="button" data-biz="' + k + '" aria-pressed="' + (k === bizDim) + '">By ' +
+          BIZ[k].toLowerCase() + '</button>';
+      }).join('') + '</div>' +
+      '<div id="reg"></div>';
 
     bind(host, function () { business(host); }, function () {
       return [
@@ -329,8 +337,8 @@ RB.ceo = (function () {
           { label: 'Deals', type: 'number', get: function (g) { return g.n; } },
           { label: 'Value', type: 'money', get: function (g) { return g.value; } }
         ] },
-        { name: 'By region', rows: regions, columns: [
-          { label: 'Region', get: function (g) { return g.key; } },
+        { name: 'By ' + BIZ[bizDim].toLowerCase(), rows: byDim, columns: [
+          { label: BIZ[bizDim], get: function (g) { return groupLabel(bizDim, g.key); } },
           { label: 'Schools', type: 'number', get: function (g) { return g.schools; } },
           { label: 'Potential deals', type: 'number', get: function (g) { return g.count; } },
           { label: 'Business in Play', type: 'money', get: function (g) { return g.pipeline; } },
@@ -345,16 +353,18 @@ RB.ceo = (function () {
     if (seeAll) seeAll.addEventListener('click', bindAttention(host, act));
 
     UI.table(host.querySelector('#reg'), {
-      rows: regions, rowId: function (g) { return g.key; }, sortKey: 'pipeline', pageSize: 8,
+      rows: byDim, rowId: function (g) { return g.key; }, sortKey: 'pipeline', pageSize: 8,
       onRowClick: function (k) {
-        var g = regions.filter(function (x) { return x.key === k; })[0];
-        if (g) UI.drill(g.key, g.rows);
+        var g = byDim.filter(function (x) { return x.key === k; })[0];
+        if (g) UI.drill(groupLabel(bizDim, g.key), g.rows);
       },
       columns: [
-        { key: 'key', label: 'Region', get: function (g) { return g.key; },
-          render: function (g) { return '<span class="strong">' + U.esc(g.key) + '</span>'; } },
+        { key: 'key', label: BIZ[bizDim], get: function (g) { return groupLabel(bizDim, g.key); },
+          render: function (g) { return '<span class="strong">' + U.esc(groupLabel(bizDim, g.key)) + '</span>'; } },
         { key: 'schools', label: 'Schools', num: true, get: function (g) { return g.schools; },
           render: function (g) { return U.count(g.schools); } },
+        { key: 'count', label: 'Deals', num: true, get: function (g) { return g.count; },
+          render: function (g) { return U.count(g.count); } },
         { key: 'pipeline', label: 'In Play', num: true, get: function (g) { return g.pipeline; },
           render: function (g) { return U.money(g.pipeline); } },
         { key: 'expected', label: 'Expected', num: true, get: function (g) { return g.expected; },
@@ -362,6 +372,10 @@ RB.ceo = (function () {
         { key: 'closed', label: 'Won', num: true, get: function (g) { return g.closed; },
           render: function (g) { return g.closed ? U.money(g.closed) : '<span class="muted">—</span>'; } }
       ]
+    });
+
+    host.querySelectorAll('[data-biz]').forEach(function (b) {
+      b.addEventListener('click', function () { bizDim = b.getAttribute('data-biz'); business(host); });
     });
 
     host.querySelectorAll('[data-step]').forEach(function (el) {
