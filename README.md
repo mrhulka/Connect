@@ -158,6 +158,15 @@ count everywhere, without changing the stored records:
 
 `node tools/test_imported.js` checks both rules.
 
+## Dropped deals
+
+A deal with `status: "Dropped"` was never real business. `store.js` leaves it
+out as the data loads, and its connects become connects on the school
+(`opportunityId` set to null in memory only). The school, its timeline and
+every activity count keep them; no pipeline, value, stage or task does. The
+server keeps the record as it is, so changing the status back restores the
+deal. The server's `opportunities.status` must accept `"Dropped"`.
+
 ## Sign-in
 
 Access codes are checked in the browser against the `pin` field on each user,

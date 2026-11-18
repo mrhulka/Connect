@@ -51,14 +51,21 @@ RB.store = (function () {
   }
 
   function reconcileOfferings() {
-    var dropped = {};
+    var dropped = {}, schoolOnly = {};
     state.opportunities = state.opportunities.filter(function (o) {
       if (RB.model.OFFERING_RETIRED[o.offering]) { dropped[o.id] = true; return false; }
+      /* A deal marked Dropped was never real business: the school stays, the
+       * deal and its money go. Its connects are the team's history, so they
+       * stay too, as connects on the school - every activity count, the team
+       * day, the calendar and the school timeline still show them. Only this
+       * copy in memory changes; the records on the server are untouched. */
+      if (o.status === 'Dropped') { schoolOnly[o.id] = true; return false; }
       var to = RB.model.offeringOf(o.offering);
       if (to !== o.offering) { o.renamedFrom = o.offering; o.offering = to; }
       return true;
     });
     state.connects = state.connects.filter(function (c) { return !dropped[c.opportunityId]; });
+    state.connects.forEach(function (c) { if (schoolOnly[c.opportunityId]) c.opportunityId = null; });
   }
 
   function commit(change) {
