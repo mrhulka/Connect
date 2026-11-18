@@ -199,10 +199,13 @@ RB.app = (function () {
           '<dt>Contacts</dt><dd>' + U.count(RB.store.contacts().length) + '</dd>' +
           '<dt>Stored in</dt><dd>Connected Backend API &amp; MySQL Database.</dd></dl>' +
           '<div class="row wrap" style="margin-top:16px">' +
-          '<button class="btn btn-primary" id="cleanup">Apply data clean-up</button>' +
           '<button class="btn" id="backup">Download backup</button>' +
-          '<button class="btn btn-danger" id="reset">Reset to imported data</button>' +
-          '</div>') +
+          '<button class="btn btn-primary" id="import-xlsx">Upload Excel</button>' +
+          '<input type="file" id="import-file" accept=".xlsx,.xls" hidden>' +
+          '</div>' +
+          '<p class="field-hint" style="margin-top:10px">Upload the Business export (.xlsx). The ' +
+          '<strong>Potential deals</strong> and <strong>Connects</strong> sheets are read and saved to the database. ' +
+          'Users and prices are not changed.</p>') +
         '</div>' +
         '<div class="section-title">Security</div>' + passwordCard() +
         '<div class="section-title">Sales team</div>' + teamCard() +
@@ -242,9 +245,6 @@ RB.app = (function () {
         });
       }
 
-      var cleanupBtn = host.querySelector('#cleanup');
-      if (cleanupBtn) cleanupBtn.addEventListener('click', function () { RB.cleanup.open(); });
-
       var backupBtn = host.querySelector('#backup');
       if (backupBtn) {
         backupBtn.addEventListener('click', function () {
@@ -252,21 +252,177 @@ RB.app = (function () {
         });
       }
 
-      var resetBtn = host.querySelector('#reset');
-      if (resetBtn) {
-        resetBtn.addEventListener('click', function () {
-          UI.modal('Reset everything?',
-            '<p class="sec" style="margin-top:0">Throws away local state modifications and reloads from the database source.</p>' +
-            '<div class="modal-actions"><button class="btn" data-close="1">Cancel</button>' +
-            '<button class="btn btn-danger" id="yes">Reset</button></div>',
-            { onMount: function (h) {
-                h.querySelector('#yes').addEventListener('click', function () {
-                  RB.store.resetDemo(); UI.closeModal(); UI.toast('Reset.'); refresh();
-                });
-              } });
-        });
-      }
+      bindImport(host);
     }
+  }
+
+  /* ------------------------------------------------------------ excel import */
+  /* Reads the Business export workbook in the browser ("Potential deals" and
+   * "Connects" sheets) and posts the rows to the backend, which updates MySQL.
+   * The other sheets (rollups, team performance, needs action...) are calculated
+   * from these two, so they are not imported. Users are never changed. */
+  var DEAL_COLS = {
+    'School': 'school', 'Location': 'location', 'Region': 'region', 'School type': 'schoolType',
+    'Students': 'students', 'Existing lab': 'existingLab', 'Competitor': 'competitor',
+    'Lead source': 'leadSource', 'Offering': 'offering', 'Variant': 'variant', 'Owner': 'owner',
+    'Stage': 'stage', 'Status': 'status', 'Interest': 'interest',
+    'Initial potential': 'initialPotential', 'Quoted': 'quoted', 'Negotiated': 'negotiated',
+    'Closed': 'closed', 'Current value': 'currentValue', 'Realisation %': 'realisationPct',
+    'New connects': 'newConnects', 'Reconnects': 'reconnects', 'Last connect': 'lastConnect',
+    'Days since': 'daysSince', 'Next Step': 'nextStep', 'Next action due': 'nextActionDue',
+    'Blocker': 'blocker', 'Loss reason': 'lossReason', 'Stalled': 'stalled', 'Why stalled': 'whyStalled'
+  };
+  var CONNECT_COLS = {
+    'Date': 'date', 'Time': 'time', 'Salesperson': 'salesperson', 'School': 'school',
+    'Region': 'region', 'School type': 'schoolType', 'Offering': 'offering', 'Type': 'type',
+    'Mode': 'mode', 'Contact': 'contact', 'Response': 'response', 'Interest': 'interest',
+    'Quoted': 'quoted', 'Negotiated': 'negotiated', 'Blocker': 'blocker',
+    'Blocker detail': 'blockerDetail', 'Notes': 'notes', 'Next Step': 'nextStep',
+    'Next action due': 'nextActionDue'
+  };
+  var DATE_FIELDS = { date: 1, nextActionDue: 1, lastConnect: 1 };
+  var XLSX_URL = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+
+  function loadXlsxLib() {
+    if (window.XLSX) return Promise.resolve(window.XLSX);
+    return new Promise(function (resolve, reject) {
+      var s = document.createElement('script');
+      s.src = XLSX_URL;
+      s.onload = function () { resolve(window.XLSX); };
+      s.onerror = function () { reject(new Error('Could not load the Excel reader. Check your connection.')); };
+      document.head.appendChild(s);
+    });
+  }
+
+  /* Dates are read as Excel serial numbers and turned into plain YYYY-MM-DD with
+   * UTC maths, so the browser's time zone can never move a date to the day
+   * before. (The export stores dates as 00:00:10, which is why they are floored.) */
+  function toYmd(v) {
+    if (v === null || v === undefined || v === '') return null;
+    if (typeof v === 'number') {
+      var d = new Date(Date.UTC(1899, 11, 30) + Math.floor(v + 0.01) * 86400000);
+      return isNaN(d) ? null : d.toISOString().slice(0, 10);
+    }
+    if (v instanceof Date) {
+      if (isNaN(v)) return null;
+      var r = new Date(Math.round(v.getTime() / 3600000) * 3600000);
+      return r.getFullYear() + '-' + String(r.getMonth() + 1).padStart(2, '0') + '-' + String(r.getDate()).padStart(2, '0');
+    }
+    var t = String(v).trim(), m;
+    if ((m = t.match(/^(\d{4})-(\d{2})-(\d{2})/))) return m[1] + '-' + m[2] + '-' + m[3];
+    if ((m = t.match(/^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{4})/))) {
+      return m[3] + '-' + m[2].padStart(2, '0') + '-' + m[1].padStart(2, '0'); // dd/mm/yyyy
+    }
+    return null;
+  }
+
+  function toHm(v) {
+    if (v === null || v === undefined || v === '') return null;
+    if (typeof v === 'number') {
+      var mins = Math.round((v % 1) * 1440) % 1440;
+      return String(Math.floor(mins / 60)).padStart(2, '0') + ':' + String(mins % 60).padStart(2, '0');
+    }
+    var m = String(v).trim().match(/^(\d{1,2}):(\d{2})/);
+    return m ? m[1].padStart(2, '0') + ':' + m[2] : null;
+  }
+
+  function cleanCell(field, v) {
+    if (DATE_FIELDS[field]) return toYmd(v);
+    if (field === 'time') return toHm(v);
+    if (typeof v === 'string') { v = v.trim(); return v === '' ? null : v; }
+    return v === undefined ? null : v;
+  }
+
+  /* Finds a sheet by name (case-insensitive) and reads the rows under the header
+   * row, which is the first row whose first cell is `firstHead`. */
+  function readSheet(XLSX, wb, sheetName, firstHead, cols, keyField) {
+    var name = wb.SheetNames.filter(function (n) { return n.toLowerCase() === sheetName; })[0];
+    if (!name) return null;
+    var grid = XLSX.utils.sheet_to_json(wb.Sheets[name], { header: 1, defval: null, raw: true });
+    var hi = -1;
+    grid.some(function (row, i) { if (row[0] === firstHead) { hi = i; return true; } });
+    if (hi < 0) throw new Error('Could not find the header row (a "' + firstHead + '" column) on the "' + sheetName + '" sheet.');
+    var heads = grid[hi], rows = [];
+    grid.slice(hi + 1).forEach(function (row) {
+      var o = {};
+      heads.forEach(function (h, c) { if (cols[h]) o[cols[h]] = cleanCell(cols[h], row[c]); });
+      if (o[keyField]) rows.push(o);
+    });
+    return rows;
+  }
+
+  function parseWorkbook(file) {
+    return Promise.all([loadXlsxLib(), file.arrayBuffer()]).then(function (r) {
+      var wb = r[0].read(r[1], { type: 'array' });
+      var deals = readSheet(r[0], wb, 'potential deals', 'School', DEAL_COLS, 'school') || [];
+      var connects = readSheet(r[0], wb, 'connects', 'Date', CONNECT_COLS, 'school') || [];
+      if (!deals.length && !connects.length) {
+        throw new Error('No "Potential deals" or "Connects" sheet with rows was found in this file.');
+      }
+      return { deals: deals, connects: connects };
+    });
+  }
+
+  function sendImport(payload) {
+    if (typeof RB.store.importBusinessData !== 'function') {
+      return Promise.reject(new Error('The store has no importBusinessData(). Update store.js too.'));
+    }
+    return Promise.resolve(RB.store.importBusinessData(payload));
+  }
+
+  function importSummary(res) {
+    var bits = [];
+    if (res.dealsCreated || res.dealsUpdated) bits.push(U.count((res.dealsCreated || 0) + (res.dealsUpdated || 0)) + ' deals');
+    if (res.connectsCreated || res.connectsUpdated) bits.push(U.count((res.connectsCreated || 0) + (res.connectsUpdated || 0)) + ' connects');
+    if (res.schoolsCreated) bits.push(U.count(res.schoolsCreated) + ' new schools');
+    return 'Imported ' + (bits.join(', ') || 'nothing new') + '.';
+  }
+
+  function bindImport(host) {
+    var btn = host.querySelector('#import-xlsx'), input = host.querySelector('#import-file');
+    if (!btn || !input) return;
+    btn.addEventListener('click', function () { input.click(); });
+    input.addEventListener('change', function () {
+      var file = input.files && input.files[0];
+      input.value = '';
+      if (!file) return;
+      btn.disabled = true; btn.textContent = 'Reading…';
+      parseWorkbook(file).then(function (data) {
+        btn.disabled = false; btn.textContent = 'Upload Excel';
+        UI.modal('Import this workbook?',
+          '<p class="sec" style="margin-top:0">This will update the database with <strong>' +
+          U.count(data.deals.length) + '</strong> potential-deal rows and <strong>' +
+          U.count(data.connects.length) + '</strong> connects. Existing schools, deals and connects ' +
+          'are updated; new ones are added. Blank cells never erase saved data. ' +
+          'The sales team (users) and the price list are not touched.</p>' +
+          '<label class="row" style="gap:8px;margin:12px 0"><input type="checkbox" id="imp-mirror"> ' +
+          '<span>Also delete deals and connects that are <strong>not</strong> in this file</span></label>' +
+          '<p class="field-hint" style="margin-top:0">Leave this off unless the file is a complete, ' +
+          'unfiltered export. Schools and contacts are never deleted.</p>' +
+          '<div class="modal-actions"><button class="btn" data-close="1">Cancel</button>' +
+          '<button class="btn btn-primary" id="imp-yes">Import</button></div>',
+          { onMount: function (h) {
+              h.querySelector('#imp-yes').addEventListener('click', function () {
+                var mirror = !!h.querySelector('#imp-mirror').checked;
+                this.disabled = true; this.textContent = 'Importing…';
+                sendImport({ deals: data.deals, connects: data.connects, mirror: mirror }).then(function (res) {
+                  UI.closeModal();
+                  var msg = importSummary(res || {});
+                  var warn = [].concat((res && res.unknownOwners) || [], (res && res.unknownSalespeople) || []);
+                  if (warn.length) msg += ' Not in the team list: ' + warn.join(', ') + '.';
+                  UI.toast(msg);
+                  refresh();
+                }).catch(function (err) {
+                  UI.closeModal();
+                  UI.toast(err.message || 'Import failed.');
+                });
+              });
+            } });
+      }).catch(function (err) {
+        btn.disabled = false; btn.textContent = 'Upload Excel';
+        UI.toast(err.message || 'Could not read the file.');
+      });
+    });
   }
 
   /* ----------------------------------------------------------- price list */

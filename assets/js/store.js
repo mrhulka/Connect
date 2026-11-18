@@ -50,14 +50,10 @@ RB.store = (function () {
     });
   }
 
-  var cleanedOut = [];
   function reconcileOfferings() {
     var dropped = {};
-    cleanedOut = state.opportunities.filter(function (o) { return o.status === 'Dropped'; });
     state.opportunities = state.opportunities.filter(function (o) {
-      // 'Dropped': taken out of the pipeline by a data clean-up. Kept on the
-      // server, counted nowhere here - the same treatment as a retired product.
-      if (RB.model.OFFERING_RETIRED[o.offering] || o.status === 'Dropped') { dropped[o.id] = true; return false; }
+      if (RB.model.OFFERING_RETIRED[o.offering]) { dropped[o.id] = true; return false; }
       var to = RB.model.offeringOf(o.offering);
       if (to !== o.offering) { o.renamedFrom = o.offering; o.offering = to; }
       return true;
@@ -265,6 +261,37 @@ RB.store = (function () {
     commit({ type: 'pricing_target_delete', itemId: id });
   }
 
+  // Bulk import of the Business export workbook ("Potential deals" + "Connects"
+  // sheets). The server updates MySQL in one transaction (users and pricing
+  // targets are never touched), then we pull the fresh state so every screen
+  // reflects it.
+  //   payload = { deals: [...], connects: [...], mirror: false }
+  function importBusinessData(payload) {
+    var u = (RB.auth && RB.auth.user && RB.auth.user()) || {};
+    return fetch(API_BASE + '/api/import/business-export', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        deals: (payload && payload.deals) || [],
+        connects: (payload && payload.connects) || [],
+        mirror: !!(payload && payload.mirror),
+        userId: u.id, pin: u.pin
+      })
+    }).then(function (res) {
+      return res.json().catch(function () { return {}; }).then(function (j) {
+        if (!res.ok) throw new Error(j.error || 'Import failed (' + res.status + ').');
+        return load().then(function () {
+          RB.model.invalidate();
+          listeners.forEach(function (fn) { fn(state); });
+          return j;
+        });
+      });
+    });
+  }
+
+  // Kept for older callers: deals only.
+  function importPotentialDeals(rows) { return importBusinessData({ deals: rows }); }
+
   function exportState() { return JSON.stringify(state, null, 1); }
 
   return {
@@ -274,9 +301,6 @@ RB.store = (function () {
     pricingTargets: function () { return state.pricingTargets || []; }, 
     savePricingTarget: savePricingTarget,                               
     removePricingTarget: removePricingTarget,
-    // deals a data clean-up took out: hidden everywhere, but the next clean-up
-    // must recognise them rather than mistake a neighbour for them
-    droppedOpportunities: function () { return cleanedOut; },
     schoolById: schoolById, opportunityById: opportunityById, contactById: contactById,
     userById: userById, contactsFor: contactsFor, opportunitiesFor: opportunitiesFor,
     connectsForSchool: connectsForSchool, findSchool: findSchool,
@@ -284,6 +308,8 @@ RB.store = (function () {
     addSchool: addSchool, addContact: addContact, addOpportunity: addOpportunity,
     logConnect: logConnect, updateSchool: updateSchool, updateOpportunity: updateOpportunity,
     resetDemo: resetDemo, exportState: exportState,
+    importBusinessData: importBusinessData,
+    importPotentialDeals: importPotentialDeals,
     subscribe: function (fn) { listeners.push(fn); },
     get adapter() { return adapter; },
     set adapter(a) { adapter = a; }
