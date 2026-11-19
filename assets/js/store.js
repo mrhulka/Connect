@@ -354,6 +354,10 @@ RB.store = (function () {
     addSchool: addSchool, addContact: addContact, addOpportunity: addOpportunity,
     logConnect: logConnect, updateSchool: updateSchool, updateOpportunity: updateOpportunity,
     resetDemo: resetDemo, exportState: exportState,
+    /* The server's data as stored, and one change sent as the website sends
+     * it - for the one-time sheet update, which must see Dropped deals too. */
+    raw: function () { return apiAdapter.read(); },
+    send: function (change) { return apiAdapter.save(change); },
     importBusinessData: importBusinessData,
     importPotentialDeals: importPotentialDeals,
     subscribe: function (fn) { listeners.push(fn); },

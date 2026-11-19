@@ -212,6 +212,8 @@ RB.app = (function () {
           '<button class="btn" id="backup">Download backup</button>' +
           '<button class="btn btn-primary" id="import-xlsx">Upload Excel</button>' +
           '<input type="file" id="import-file" accept=".xlsx,.xls" hidden>' +
+          '<button class="btn btn-dark" id="sheet-update">Apply corrected sheet</button>' +
+          '<input type="file" id="sheet-file" accept=".xlsx" hidden>' +
           '</div>' +
           '<p class="field-hint" style="margin-top:10px">Upload the Business export (.xlsx). The ' +
           '<strong>Potential deals</strong> and <strong>Connects</strong> sheets are read and saved to the database. ' +
@@ -268,6 +270,7 @@ RB.app = (function () {
       }
 
       bindImport(host);
+      bindSheetUpdate(host);
     }
   }
 
@@ -436,6 +439,66 @@ RB.app = (function () {
       }).catch(function (err) {
         btn.disabled = false; btn.textContent = 'Upload Excel';
         UI.toast(err.message || 'Could not read the file.');
+      });
+    });
+  }
+
+  /* One-time: robobox-business_corrected.xlsx -> the live data. Preview,
+   * a backup saved to this computer, the change, then a check that every
+   * edit stuck and no connect went missing. See sheet-update.js. */
+  function bindSheetUpdate(host) {
+    var btn = host.querySelector('#sheet-update'), input = host.querySelector('#sheet-file');
+    if (!btn || !RB.sheetUpdate) return;
+    btn.addEventListener('click', function () { input.click(); });
+    input.addEventListener('change', function () {
+      var file = input.files && input.files[0];
+      input.value = '';
+      if (!file) return;
+      btn.disabled = true; btn.textContent = 'Reading…';
+      Promise.all([loadXlsxLib(), file.arrayBuffer(), RB.store.raw()]).then(function (r) {
+        btn.disabled = false; btn.textContent = 'Apply corrected sheet';
+        var live = r[2];
+        var p = RB.sheetUpdate.plan(live, RB.sheetUpdate.changes(r[0], r[0].read(r[1], { type: 'array' })));
+        var n = p.won.length + p.clear.length + p.people.length;
+        var li = function (rows) {
+          return rows.length ? '<ul class="small" style="margin:4px 0 0 18px">' + rows.map(function (x) {
+            return '<li>' + U.esc(x) + '</li>'; }).join('') + '</ul>' : '';
+        };
+        UI.modal(n ? 'Apply the corrected sheet?' : 'Already applied',
+          '<p class="sec" style="margin-top:0">' + (n ? 'This changes the live data:' : 'Everything in this sheet is already in the data. Nothing to do.') + '</p>' +
+          (n ? '<ul style="margin:0 0 12px 18px">' +
+            (p.people.length ? '<li>' + p.people.length + ' people added: ' + U.esc(p.people.map(function (u) { return u.name + ' (code ' + u.pin + ')'; }).join(', ')) + '</li>' : '') +
+            '<li>' + p.won.length + ' deals recorded as Won' + li(p.won.map(function (x) { return x.ch.school + ' – ' + U.money(x.patch.closedValue); })) + '</li>' +
+            '<li>' + p.clear.length + ' deals made school-only (deal dropped, size cleared; school and connects kept)</li>' +
+            '<li>Open pipeline ' + U.money(p.pipelineBefore) + ' → about ' + U.money(p.pipelineAfter) + '</li></ul>' : '') +
+          '<p class="sec">Left alone: ' + p.kept.length + ' deals the team worked or closed on the website' +
+            (p.done.length ? ', ' + p.done.length + ' already done' : '') + '.</p>' +
+          '<p class="sec"><strong>Connects deleted or changed: 0. Deals deleted: 0.</strong> ' +
+            'A full backup is saved to this computer before anything changes.</p>' +
+          '<div class="modal-actions"><button class="btn" data-close="1">' + (n ? 'Cancel' : 'Close') + '</button>' +
+          (n ? '<button class="btn btn-primary" id="su-yes">Back up and apply</button>' : '') + '</div>',
+          { onMount: function (h) {
+              var yes = h.querySelector('#su-yes');
+              if (!yes) return;
+              yes.addEventListener('click', function () {
+                yes.disabled = true; yes.textContent = 'Applying…';
+                U.download('robobox-backup-before-update-' + U.iso(U.today()) + '.json', JSON.stringify(live), 'application/json');
+                RB.sheetUpdate.apply(p).then(function (res) {
+                  var bad = res.failed.length || res.connectsAfter < res.connectsBefore;
+                  UI.modal(bad ? 'Some changes did not save' : 'Done',
+                    '<p class="sec" style="margin-top:0">Applied ' + res.done + ' of ' + res.total + ' changes.</p>' +
+                    '<p class="sec">Connects before: ' + res.connectsBefore + ', after: ' + res.connectsAfter + '.' +
+                      (res.connectsAfter < res.connectsBefore ? ' <strong>Connects are missing - restore from the backup file.</strong>' : '') + '</p>' +
+                    '<p class="sec">Open pipeline now: ' + U.money(res.pipeline) + '.</p>' +
+                    (res.failed.length ? '<p class="sec">Not saved (the server may not accept the new values "Dropped", "Lead" or "caller"):</p>' + li(res.failed) : '') +
+                    '<div class="modal-actions"><button class="btn btn-primary" data-close="1">Close</button></div>');
+                  RB.store.load().then(function () { RB.model.invalidate(); refresh(); });
+                }).catch(function (e) { UI.closeModal(); UI.toast('Stopped: ' + (e.message || e)); });
+              });
+            } });
+      }).catch(function (e) {
+        btn.disabled = false; btn.textContent = 'Apply corrected sheet';
+        UI.toast(e.message || 'Could not read the file.');
       });
     });
   }
