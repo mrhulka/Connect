@@ -135,11 +135,17 @@ stuck, overdue, no-next, date-passed, quiet). `ceo.js` shows them as cards
 with a breakdown by kind: a grid on Business, a sideways rail on Sales,
 Market and Win. A card opens the school; See all opens the full list.
 
-## Uploading business data (Settings → Upload Excel)
+## Upload updated data (Settings)
 
-Settings reads an Excel export in the browser and sends the deals and
-connects to `POST /api/import/business-export`, then reloads `/api/state`.
-The server decides how rows are matched and stored.
+The one data button besides Download backup. It takes an update file
+(`kind: "robobox-updated-data"`) prepared from a backup: records to put back
+and records to change, each by id (`assets/js/data-update.js` documents the
+format). It previews, saves a full backup to the computer, re-links one
+connect as a trial and stops if the server did not update it in place, then
+sends the rest through `POST /api/sync` (`user`, `opportunity_add`,
+`connect`) and reads everything back. It never deletes. The old Excel import
+(`/api/import/business-export`, with its "delete what is not in the file"
+option) is no longer called: on 18 Nov it deleted 229 deals and 59 connects.
 
 ## Imported deals
 
