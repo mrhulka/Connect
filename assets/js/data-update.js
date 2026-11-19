@@ -9,6 +9,9 @@
  *             [{id, patch:{...}}]          fields set on the live deal
  *   connects  [{id, create:{...}}]         put back if the id is not there
  *             [{id, link:'OPP-...'}]       a connect re-attached to its deal
+ *   (the live server never updates a saved connect, so a loose connect is
+ *    put back on its deal as a new copy "<id>-linked"; store.js shows the
+ *    copy in place of the original)
  *
  * Before anything changes it saves a full backup to this computer and tries
  * one re-link, then reads the data back: if the server did not update that
@@ -60,7 +63,7 @@ RB.dataUpdate = (function () {
       p.connLink.push(Object.assign({}, x, { opportunityId: c.link }));
     });
     p.total = p.people.length + p.dealCreate.length + p.dealPatch.length + p.connCreate.length + p.connLink.length;
-    p.connects = live.connects.length;
+    p.connects = shown(live.connects);
     p.dealsById = index(live.opportunities.concat(p.dealCreate).concat(p.dealPatch));
     return p;
   }
@@ -114,9 +117,15 @@ RB.dataUpdate = (function () {
       var lost = Object.keys(before).filter(function (id) { return !c[id]; });
       var ids = st.connects.map(function (x) { return x.id; });
       return { done: p.total - failed.length, total: p.total, failed: unique(failed),
-               connectsBefore: live.connects.length, connectsAfter: st.connects.length,
+               connectsBefore: shown(live.connects), connectsAfter: shown(st.connects),
                lost: lost.length, doubled: ids.length - Object.keys(c).length };
     });
+  }
+
+  /* Connects as the app shows them: a "-linked" copy stands in for its original. */
+  function shown(rows) {
+    var ids = index(rows);
+    return rows.filter(function (c) { return !ids[c.id + '-linked']; }).length;
   }
 
   function unique(list) { return list.filter(function (x, i) { return list.indexOf(x) === i; }); }

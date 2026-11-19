@@ -70,6 +70,13 @@ RB.store = (function () {
       return true;
     });
     state.connects = state.connects.filter(function (c) { return !dropped[c.opportunityId]; });
+    /* The server keeps a connect once saved and never updates it. A connect
+     * cut loose from its deal is put back on it as a copy ending "-linked";
+     * the app shows the copy in place of the loose original, which stays on
+     * the server untouched. */
+    var linked = {};
+    state.connects.forEach(function (c) { if (/-linked$/.test(c.id)) linked[c.id.slice(0, -7)] = true; });
+    state.connects = state.connects.filter(function (c) { return !linked[c.id]; });
     state.connects.forEach(function (c) { if (schoolOnly[c.opportunityId]) c.opportunityId = null; });
   }
 

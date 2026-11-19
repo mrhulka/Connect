@@ -288,10 +288,13 @@ RB.app = (function () {
         var f = RB.dataUpdate.read(r[0]), live = r[1], p = RB.dataUpdate.plan(live, f);
         var line = function (n, text) { return n ? '<li>' + U.esc(text) + '</li>' : ''; };
         var restoredDropped = p.dealCreate.filter(function (o) { return o.status === 'Dropped'; }).length;
+        var relinked = p.connCreate.filter(function (c) { return /-linked$/.test(c.id); }).length;
+        var back = p.connCreate.length - relinked;
         UI.modal(p.total ? 'Upload this data?' : 'Already up to date',
           (f.about ? '<p class="sec" style="margin-top:0">' + U.esc(f.about) + '</p>' : '') +
           (p.total ? '<ul style="margin:0 0 12px 18px">' +
-            line(p.connCreate.length, 'Puts back ' + p.connCreate.length + ' connects') +
+            line(back, 'Puts back ' + back + ' connects') +
+            line(relinked, 'Re-attaches ' + relinked + ' connects to their deals') +
             line(p.connLink.length, 'Re-attaches ' + p.connLink.length + ' connects to their deals') +
             line(p.dealCreate.length, 'Puts back ' + p.dealCreate.length + ' deals' + (restoredDropped ? ' (' + restoredDropped + ' of them as school-only, no money)' : '')) +
             line(p.dealPatch.length, 'Updates ' + p.dealPatch.length + ' deals') +
